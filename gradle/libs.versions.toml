@@ -14,7 +14,7 @@ junit = "4.13.2"
 junitJupiter = "5.10.2"
 truth = "1.4.4"
 mockk = "1.13.13"
-turbine = "1.2.0"
+turbine = "1.2.1"
 orgJson = "20240303"
 
 [libraries]

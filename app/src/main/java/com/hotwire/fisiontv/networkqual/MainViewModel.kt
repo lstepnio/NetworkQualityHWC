@@ -1,20 +1,19 @@
 package com.hotwire.fisiontv.networkqual
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.hotwire.fisiontv.networkqual.cert.CertificationEngine
 import com.hotwire.fisiontv.networkqual.cert.CertificationResult
 import com.hotwire.fisiontv.networkqual.cert.EngineEvent
 import com.hotwire.fisiontv.networkqual.cert.TestStep
+import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigProvider
 import com.hotwire.fisiontv.networkqual.data.AppDatabase
 import com.hotwire.fisiontv.networkqual.data.HistoryEntity
 import com.hotwire.fisiontv.networkqual.data.toEntity
-import com.hotwire.fisiontv.networkqual.publish.NoAuthProvider
-import com.hotwire.fisiontv.networkqual.publish.OkHttpResultPublisher
-import com.hotwire.fisiontv.networkqual.publish.PublishOutcome
-import com.hotwire.fisiontv.networkqual.publish.ResultPublisher
+import com.hotwire.fisiontv.networkqual.publish.PublishQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,6 +23,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+private const val TAG = "MainViewModel"
 
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -39,7 +40,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private val configProvider = RuntimeConfigProvider()
-    private val historyDao = AppDatabase.get(application).historyDao()
+    private val db = AppDatabase.get(application)
+    private val historyDao = db.historyDao()
+    private val publishQueue = PublishQueue(db.pendingPublishDao())
 
     private val _state = MutableStateFlow<UiState>(UiState.Idle)
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -49,11 +52,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var runJob: Job? = null
 
+    init {
+        // Drain any pending publishes left over from a prior session
+        // (process killed before they posted, network was down, etc.).
+        viewModelScope.launch { drainQueue(configProvider.current()) }
+    }
+
     fun startCertification() {
         if (runJob?.isActive == true) return
         // Re-read config per run so a refresh that arrived between runs
-        // (once the cert-config API is wired) takes effect on the next click
-        // of "Run again" without an app restart.
+        // (once the cert-config API is wired) takes effect on the next
+        // click of "Run again" without an app restart.
         val config = configProvider.current()
         val engine = CertificationEngine(getApplication(), config)
         runJob = viewModelScope.launch {
@@ -67,7 +76,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         withContext(Dispatchers.IO) {
                             historyDao.insert(event.result.toEntity())
                         }
-                        publishIfEnabled(event.result, config)
+                        enqueueAndDrain(event.result, config)
                     }
                     is EngineEvent.Failed ->
                         _state.value = UiState.Failed(event.step, event.cause)
@@ -76,26 +85,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun publishIfEnabled(
-        result: CertificationResult,
-        config: com.hotwire.fisiontv.networkqual.config.RuntimeConfig
-    ) {
+    private suspend fun enqueueAndDrain(result: CertificationResult, config: RuntimeConfig) {
         val pub = config.resultsPublishing
         if (!pub.enabled || pub.endpoint.isNullOrBlank()) return
-        val publisher: ResultPublisher = OkHttpResultPublisher(
-            endpoint = pub.endpoint,
-            authProvider = NoAuthProvider, // see contract/SPEC.md §5
-            deviceId = result.diagnostics.identity.deviceId,
-            appVersion = result.diagnostics.device.appVersion,
-            schemaVersion = 1
-        )
-        val outcome = withContext(Dispatchers.IO) { publisher.publish(result) }
-        when (outcome) {
-            is PublishOutcome.Success, is PublishOutcome.Duplicate -> Unit
-            is PublishOutcome.TransientFailure ->
-                android.util.Log.w("MainViewModel", "result publish transient: ${outcome.cause}")
-            is PublishOutcome.PermanentFailure ->
-                android.util.Log.e("MainViewModel", "result publish permanent ${outcome.httpStatus}: ${outcome.cause}")
+        publishQueue.enqueue(result, pub.endpoint)
+        drainQueue(config)
+    }
+
+    private suspend fun drainQueue(config: RuntimeConfig) {
+        val pub = config.resultsPublishing
+        if (!pub.enabled || pub.endpoint.isNullOrBlank()) return
+        try {
+            val drained = publishQueue.drain(pub.endpoint)
+            if (drained > 0) Log.i(TAG, "drained $drained pending result(s)")
+        } catch (t: Throwable) {
+            Log.w(TAG, "drain failed: ${t::class.simpleName}: ${t.message}")
         }
     }
 

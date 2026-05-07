@@ -42,10 +42,11 @@ These don't block launch but make support 10× more effective.
       ~30 min of integration; surfaces field crashes that would
       otherwise be invisible. (Sentry is preferred — self-hostable, no
       Firebase BoM tax.)
-- [ ] **Persistent result-publish queue.** Today's `OkHttpResultPublisher`
-      retries in-memory and drops on app kill. Add a Room-backed pending
-      queue so a flaky-network STB still posts when it comes back.
-      ~50 lines + a Room DAO.
+- [x] ~~**Persistent result-publish queue.**~~ Done in v0.4.0
+      (`publish/PublishQueue.kt` + Room `pending_publish` table). Drains
+      on app launch and after every completed run, exits-on-transient-
+      failure to avoid burning retries during a network outage, prunes
+      rows that exhaust 8 attempts.
 - [ ] **Server-side dashboard.** Grafana on the certifications table;
       panels for tier distribution, marginal-metric histogram, fleet
       Widevine-L1 ratio, thermal events. Out of scope for app team.

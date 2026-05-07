@@ -10,7 +10,7 @@ import java.util.Locale
 import java.util.TimeZone
 
 /**
- * Builds a JSON payload matching docs/BACKEND_API_SPEC.md for POST to
+ * Builds a JSON payload matching contract/openapi.yaml for POST to
  * /v1/certifications. Uses org.json so there's no extra dependency on
  * kotlinx.serialization/moshi. Field names and shapes mirror the spec
  * exactly — when the backend exists, this object's output drops in.

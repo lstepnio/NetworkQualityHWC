@@ -27,8 +27,17 @@ diagnostics/           ← Device, network, Wi-Fi, capability collection.
                          No new permissions beyond what the manifest declares.
 ui/                    ← Compose for TV.
 data/                  ← Room history (local-only; future: results POST).
-docs/BACKEND_API_SPEC  ← Contract the backend implements. Read this first
-                         before touching the payload schema.
+contract/              ← Submodule. The OpenAPI 3.1 spec + narrative both
+                         this app and the backend agree on. Pinned to a
+                         tag; bump deliberately. See contract/SPEC.md.
+```
+
+When cloning, pull the contract submodule too:
+
+```bash
+git clone --recurse-submodules https://github.com/lstepnio/NetworkQualityHWC.git
+# or, if you already cloned without --recurse-submodules:
+git submodule update --init --recursive
 ```
 
 ## Building locally
@@ -100,6 +109,19 @@ Actions versions. See `.github/dependabot.yml`.
 ## Backend contract
 
 The backend that consumes results lives in a separate project. The schema
-both ends agree on is checked into a third repository — see
-`docs/BACKEND_API_SPEC.md` for the human-readable narrative and the
-contract submodule (added separately) for the OpenAPI source of truth.
+both ends agree on is checked into the
+[`fisiontv-cert-contract`](https://github.com/lstepnio/fisiontv-cert-contract)
+repo and pulled into this project as a git submodule at `contract/`. The
+OpenAPI source of truth is `contract/openapi.yaml`; the human-readable
+narrative is `contract/SPEC.md`.
+
+Bumping the contract version:
+
+```bash
+cd contract
+git fetch
+git checkout v1.1.0  # the new tag
+cd ..
+git add contract
+git commit -m "chore: bump contract to v1.1.0"
+```

@@ -5,7 +5,7 @@ import com.hotwire.fisiontv.networkqual.cert.TierThreshold
 
 /**
  * Bundled fallback config baked into the APK. Used until the cert-config API
- * returns a fresher copy. Keep this in sync with docs/BACKEND_API_SPEC.md
+ * returns a fresher copy. Keep this in sync with contract/SPEC.md
  * §6.1; backend-served configs must produce identical behaviour.
  */
 object RuntimeConfigDefaults {

@@ -6,7 +6,7 @@ import com.hotwire.fisiontv.networkqual.cert.TierThreshold
  * Single source of truth for everything tunable in the certification suite.
  *
  * Today this is constructed from [RuntimeConfigDefaults]. The intent is that
- * once `GET /v1/cert-config` ships (see docs/BACKEND_API_SPEC.md §4.1), a
+ * once `GET /v1/cert-config` ships (see contract/SPEC.md §4.1), a
  * remote-fetched copy replaces the bundled defaults — without an APK push.
  *
  * Validation is enforced in `init` blocks so a bad config (locally or

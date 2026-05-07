@@ -1,3 +1,11 @@
+# Signing secrets — never commit. The release keystore lives in
+# ~/.fision-keystores/ and in GitHub Secrets; nowhere inside the repo.
+*.jks
+*.keystore
+*.p12
+keystore.properties
+signing.properties
+
 *.iml
 .gradle
 /local.properties

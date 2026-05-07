@@ -124,17 +124,31 @@ fun ResultsScreen(
 
 @Composable
 private fun HealthBadge(health: HealthAssessment) {
-    val color = when (health.rating) {
-        HealthRating.EXCELLENT -> FisionHealthExcellent
-        HealthRating.STRONG -> FisionHealthStrong
-        HealthRating.GOOD -> FisionHealthGood
-        HealthRating.MARGINAL -> FisionHealthMarginal
-        HealthRating.FAILED -> FisionHealthFailed
+    // Top-tier achievement is a separate visual case: the customer certified
+    // at the top of the ladder, so the pill should say "Top tier" in green
+    // regardless of how tight the within-tier margin is. The headroom % and
+    // limiting metric still appear in the subline so the customer (and a
+    // tech) can see whether the connection is comfortably or just barely
+    // 4K HDR.
+    val isTopTier = health.nextTier == null && health.rating != HealthRating.FAILED
+
+    val color = when {
+        isTopTier -> FisionHealthExcellent
+        health.rating == HealthRating.EXCELLENT -> FisionHealthExcellent
+        health.rating == HealthRating.STRONG -> FisionHealthStrong
+        health.rating == HealthRating.GOOD -> FisionHealthGood
+        health.rating == HealthRating.MARGINAL -> FisionHealthMarginal
+        else -> FisionHealthFailed
     }
+    val pillText = if (isTopTier) "Top tier" else health.rating.displayName
+
     val subline = when {
         health.rating == HealthRating.FAILED -> "Connection didn't reach the SD floor."
-        health.nextTier == null -> "Above the top tier — no headroom limit."
-        else -> "${health.headroomPct}% of the way to ${health.nextTier.displayName} · limited by ${health.limitingMetric ?: "—"}"
+        isTopTier -> {
+            val limited = health.limitingMetric ?: "—"
+            "${health.headroomPct}% margin within top tier · closest to floor: $limited"
+        }
+        else -> "${health.headroomPct}% of the way to ${health.nextTier!!.displayName} · limited by ${health.limitingMetric ?: "—"}"
     }
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -148,7 +162,7 @@ private fun HealthBadge(health: HealthAssessment) {
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        health.rating.displayName,
+                        pillText,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = Color.White

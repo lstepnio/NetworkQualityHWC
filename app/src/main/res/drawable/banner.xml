@@ -1,39 +1,27 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="320dp"
-    android:height="180dp"
-    android:viewportWidth="320"
-    android:viewportHeight="180">
-
-    <path
-        android:fillColor="#0E1B2D"
-        android:pathData="M0,0h320v180H0z" />
-
-    <path
-        android:fillColor="#EE3D5B"
-        android:pathData="M0,150h320v30H0z" />
-
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M120,55 C120,38 150,38 150,55 L150,95 L142,95 L142,60 C142,48 128,48 128,60 L128,95 L120,95 Z" />
-
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M114,80 L130,80 L130,108 L120,108 A6,6 0 0,1 114,102 L114,86 A6,6 0 0,1 120,80 Z" />
-
-    <path
-        android:fillColor="#FFFFFF"
-        android:pathData="M140,80 L156,80 A6,6 0 0,1 162,86 L162,102 A6,6 0 0,1 156,108 L146,108 L140,108 Z" />
-
-    <path
-        android:fillColor="#EE3D5B"
-        android:pathData="M190,75 L210,75 L210,125 L190,125 Z" />
-
-    <path
-        android:fillColor="#EE3D5B"
-        android:pathData="M220,60 L240,60 L240,125 L220,125 Z" />
-
-    <path
-        android:fillColor="#EE3D5B"
-        android:pathData="M250,45 L270,45 L270,125 L250,125 Z" />
-</vector>
+<!--
+    Android TV banner — what shows in the Apps row on the Leanback home.
+    Layered: solid FisionNavy background with the official "fisiontv+"
+    logo (white-tv variant) centered. The logo file (logo_fision_on_dark)
+    is the dark-background variant from the brand kit; pink "fision" +
+    white "tv" + gradient "+" reads cleanly on FisionNavy without any
+    further treatment.
+-->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="@color/fision_navy" />
+        </shape>
+    </item>
+    <item
+        android:gravity="center"
+        android:left="40dp"
+        android:right="40dp"
+        android:top="40dp"
+        android:bottom="40dp">
+        <bitmap
+            android:src="@drawable/logo_fision_on_dark"
+            android:gravity="center"
+            android:filter="true" />
+    </item>
+</layer-list>

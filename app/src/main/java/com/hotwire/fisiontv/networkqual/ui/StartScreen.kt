@@ -1,9 +1,11 @@
 package com.hotwire.fisiontv.networkqual.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
@@ -18,7 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.hotwire.fisiontv.networkqual.R
 
 @Composable
 fun StartScreen(onStart: () -> Unit) {
@@ -32,12 +37,15 @@ fun StartScreen(onStart: () -> Unit) {
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(
-            text = "fision",
-            style = MaterialTheme.typography.displayMedium,
-            color = MaterialTheme.colorScheme.primary
+        Image(
+            painter = painterResource(id = R.drawable.logo_fision_on_dark),
+            contentDescription = "FisionTV+",
+            contentScale = ContentScale.Fit,
+            modifier = Modifier
+                .fillMaxWidth(0.55f)
+                .height(140.dp)
         )
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(16.dp))
         Text(
             text = "Network Certification",
             style = MaterialTheme.typography.headlineMedium,

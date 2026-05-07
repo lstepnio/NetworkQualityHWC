@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FisionTV+ Network Certifier</string>
+    <string name="start_title">FisionTV+ Network Certification</string>
+    <string name="start_subtitle">Verify this connection can support FisionTV+ streaming.</string>
+    <string name="start_button">Run certification</string>
+    <string name="results_title">Certification result</string>
+    <string name="run_again">Run again</string>
+    <string name="retry">Retry</string>
+</resources>

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="fision_pink">#EE3D5B</color>
+    <color name="fision_pink_dark">#C4365A</color>
+    <color name="fision_navy">#0E1B2D</color>
+    <color name="fision_navy_light">#16263D</color>
+    <color name="ic_launcher_background">#EE3D5B</color>
+</resources>

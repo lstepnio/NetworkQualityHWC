@@ -17,10 +17,10 @@ val ciVersionCode: Int = System.getenv("FISION_VERSION_CODE")?.toIntOrNull() ?: 
 // real .jks; otherwise the release buildType falls back to the debug
 // signing config so `./gradlew assembleRelease` still produces an APK
 // locally for ad-hoc testing.
-val keystorePath: String? = System.getenv("KEYSTORE_PATH")
-val keystorePassword: String? = System.getenv("KEYSTORE_PASSWORD")
-val keyAlias: String? = System.getenv("KEY_ALIAS")
-val canSignRelease = keystorePath != null && keystorePassword != null && keyAlias != null
+val ksPath: String? = System.getenv("KEYSTORE_PATH")
+val ksPassword: String? = System.getenv("KEYSTORE_PASSWORD")
+val ksKeyAlias: String? = System.getenv("KEY_ALIAS")
+val canSignRelease = ksPath != null && ksPassword != null && ksKeyAlias != null
 
 android {
     namespace = "com.hotwire.fisiontv.networkqual"
@@ -37,10 +37,10 @@ android {
     if (canSignRelease) {
         signingConfigs {
             create("release") {
-                storeFile = file(keystorePath!!)
-                storePassword = keystorePassword
-                this.keyAlias = keyAlias
-                keyPassword = keystorePassword // PKCS12: store and key passwords are the same
+                storeFile = file(ksPath!!)
+                storePassword = ksPassword
+                keyAlias = ksKeyAlias
+                keyPassword = ksPassword  // PKCS12: store and key passwords are the same
             }
         }
     }

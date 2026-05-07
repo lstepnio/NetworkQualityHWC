@@ -1,8 +1,8 @@
 package com.hotwire.fisiontv.networkqual.cert
 
 import com.hotwire.fisiontv.networkqual.config.HealthAssessmentConfig
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
-import com.hotwire.fisiontv.networkqual.test.ThroughputResult
+import com.hotwire.fisiontv.networkqual.cert.probes.LatencyResult
+import com.hotwire.fisiontv.networkqual.cert.probes.ThroughputResult
 
 /**
  * Computes the on-screen "Headroom" indicator. Score is the per-metric

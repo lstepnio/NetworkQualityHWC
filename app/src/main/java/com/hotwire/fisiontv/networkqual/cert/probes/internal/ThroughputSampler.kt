@@ -2,7 +2,7 @@ package com.hotwire.fisiontv.networkqual.cert.probes.internal
 
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.config.ThroughputPhaseConfig
-import com.hotwire.fisiontv.networkqual.test.ThroughputResult
+import com.hotwire.fisiontv.networkqual.cert.probes.ThroughputResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers

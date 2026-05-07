@@ -7,9 +7,9 @@ import com.hotwire.fisiontv.networkqual.diagnostics.Transport
 import com.hotwire.fisiontv.networkqual.fixtures.FakeDiagnostics
 import com.hotwire.fisiontv.networkqual.fixtures.FakeProbeFactory
 import com.hotwire.fisiontv.networkqual.fixtures.Fixtures
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
-import com.hotwire.fisiontv.networkqual.test.PlaybackResult
-import com.hotwire.fisiontv.networkqual.test.ThroughputResult
+import com.hotwire.fisiontv.networkqual.cert.probes.LatencyResult
+import com.hotwire.fisiontv.networkqual.cert.probes.PlaybackResult
+import com.hotwire.fisiontv.networkqual.cert.probes.ThroughputResult
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.runTest
 import org.junit.Test

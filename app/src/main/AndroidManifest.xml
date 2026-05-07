@@ -13,6 +13,7 @@
         android:required="false" />
 
     <application
+        android:name=".FisionApp"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:banner="@drawable/banner"

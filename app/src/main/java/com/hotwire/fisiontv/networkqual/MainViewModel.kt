@@ -9,11 +9,8 @@ import com.hotwire.fisiontv.networkqual.cert.CertificationResult
 import com.hotwire.fisiontv.networkqual.cert.EngineEvent
 import com.hotwire.fisiontv.networkqual.cert.TestStep
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
-import com.hotwire.fisiontv.networkqual.config.RuntimeConfigProvider
-import com.hotwire.fisiontv.networkqual.data.AppDatabase
 import com.hotwire.fisiontv.networkqual.data.HistoryEntity
 import com.hotwire.fisiontv.networkqual.data.toEntity
-import com.hotwire.fisiontv.networkqual.publish.PublishQueue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,10 +36,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         data class Failed(val step: TestStep, val message: String) : UiState
     }
 
-    private val configProvider = RuntimeConfigProvider()
-    private val db = AppDatabase.get(application)
-    private val historyDao = db.historyDao()
-    private val publishQueue = PublishQueue(db.pendingPublishDao())
+    private val container = (application as FisionApp).container
+    private val historyDao = container.database.historyDao()
+    private val publishQueue = container.publishQueue
+    private val configProvider = container.configProvider
 
     private val _state = MutableStateFlow<UiState>(UiState.Idle)
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -53,8 +50,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var runJob: Job? = null
 
     init {
-        // Drain any pending publishes left over from a prior session
-        // (process killed before they posted, network was down, etc.).
+        // Drain anything left over from a prior session — STB killed
+        // before the publish completed, network was down, etc.
         viewModelScope.launch { drainQueue(configProvider.current()) }
     }
 

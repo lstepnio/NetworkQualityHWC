@@ -2,10 +2,10 @@ package com.hotwire.fisiontv.networkqual.cert
 
 import com.hotwire.fisiontv.networkqual.config.OoklaServer
 import com.hotwire.fisiontv.networkqual.diagnostics.NetworkDiagnostics
-import com.hotwire.fisiontv.networkqual.test.DnsResult
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
-import com.hotwire.fisiontv.networkqual.test.PlaybackResult
-import com.hotwire.fisiontv.networkqual.test.ThroughputResult
+import com.hotwire.fisiontv.networkqual.cert.probes.DnsResult
+import com.hotwire.fisiontv.networkqual.cert.probes.LatencyResult
+import com.hotwire.fisiontv.networkqual.cert.probes.PlaybackResult
+import com.hotwire.fisiontv.networkqual.cert.probes.ThroughputResult
 
 data class CertificationResult(
     val certificationId: String,

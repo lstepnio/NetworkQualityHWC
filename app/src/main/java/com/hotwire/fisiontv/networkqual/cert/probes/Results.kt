@@ -1,4 +1,4 @@
-package com.hotwire.fisiontv.networkqual.test
+package com.hotwire.fisiontv.networkqual.cert.probes
 
 data class DnsResult(
     val medianMs: Long,

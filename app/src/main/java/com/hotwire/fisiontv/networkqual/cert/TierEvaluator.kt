@@ -1,8 +1,8 @@
 package com.hotwire.fisiontv.networkqual.cert
 
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
-import com.hotwire.fisiontv.networkqual.test.PlaybackResult
-import com.hotwire.fisiontv.networkqual.test.ThroughputResult
+import com.hotwire.fisiontv.networkqual.cert.probes.LatencyResult
+import com.hotwire.fisiontv.networkqual.cert.probes.PlaybackResult
+import com.hotwire.fisiontv.networkqual.cert.probes.ThroughputResult
 
 class TierEvaluator(private val tiers: List<TierThreshold>) {
 

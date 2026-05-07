@@ -6,8 +6,8 @@ import android.net.DnsResolver
 import android.os.Build
 import android.os.CancellationSignal
 import android.util.Log
-import com.hotwire.fisiontv.networkqual.test.DnsResult
-import com.hotwire.fisiontv.networkqual.test.DnsSample
+import com.hotwire.fisiontv.networkqual.cert.probes.DnsResult
+import com.hotwire.fisiontv.networkqual.cert.probes.DnsSample
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext

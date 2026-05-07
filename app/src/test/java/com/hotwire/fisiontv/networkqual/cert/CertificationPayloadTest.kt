@@ -4,9 +4,9 @@ import com.google.common.truth.Truth.assertThat
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigDefaults
 import com.hotwire.fisiontv.networkqual.fixtures.FakeDiagnostics
 import com.hotwire.fisiontv.networkqual.fixtures.Fixtures
-import com.hotwire.fisiontv.networkqual.test.DnsResult
-import com.hotwire.fisiontv.networkqual.test.DnsSample
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
+import com.hotwire.fisiontv.networkqual.cert.probes.DnsResult
+import com.hotwire.fisiontv.networkqual.cert.probes.DnsSample
+import com.hotwire.fisiontv.networkqual.cert.probes.LatencyResult
 import org.json.JSONObject
 import org.junit.Test
 

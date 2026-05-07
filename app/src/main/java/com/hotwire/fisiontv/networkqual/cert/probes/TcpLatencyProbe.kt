@@ -2,7 +2,7 @@ package com.hotwire.fisiontv.networkqual.cert.probes
 
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.config.LatencyPhaseConfig
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
+import com.hotwire.fisiontv.networkqual.cert.probes.LatencyResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.net.InetSocketAddress

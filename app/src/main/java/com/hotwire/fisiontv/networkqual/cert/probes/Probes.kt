@@ -1,17 +1,13 @@
 package com.hotwire.fisiontv.networkqual.cert.probes
 
 import com.hotwire.fisiontv.networkqual.config.OoklaServer
-import com.hotwire.fisiontv.networkqual.test.DnsResult
-import com.hotwire.fisiontv.networkqual.test.LatencyResult
-import com.hotwire.fisiontv.networkqual.test.PlaybackResult
-import com.hotwire.fisiontv.networkqual.test.ThroughputResult
 
 /**
  * Per-phase probe interfaces. The certification engine depends on these,
  * never on concrete implementations. Today these are backed by hand-rolled
- * OkHttp / TCP / Media3 code in [com.hotwire.fisiontv.networkqual.test];
- * dropping in the Ookla SDK later means writing new implementations and
- * pointing [ProbeFactory] at them.
+ * OkHttp / TCP / Media3 code in this same package; dropping in the Ookla
+ * SDK later means writing new implementations and pointing
+ * [ProbeFactory] at them.
  *
  * Every implementation must:
  *   - be pure with respect to its config (no globals, no singletons besides

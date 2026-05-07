@@ -5,6 +5,23 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// versionName is read from the FISION_VERSION_NAME env var (set by CI from
+// the git tag, e.g. v0.2.0 -> 0.2.0). versionCode comes from
+// FISION_VERSION_CODE (CI passes `git rev-list --count HEAD`). Local builds
+// fall back to a placeholder so devs aren't forced to set env vars.
+val ciVersionName: String = System.getenv("FISION_VERSION_NAME") ?: "0.0.0-local"
+val ciVersionCode: Int = System.getenv("FISION_VERSION_CODE")?.toIntOrNull() ?: 1
+
+// Release signing reads from a base64-encoded keystore that CI decodes to a
+// temp file. Local release builds work too if KEYSTORE_PATH points to the
+// real .jks; otherwise the release buildType falls back to the debug
+// signing config so `./gradlew assembleRelease` still produces an APK
+// locally for ad-hoc testing.
+val keystorePath: String? = System.getenv("KEYSTORE_PATH")
+val keystorePassword: String? = System.getenv("KEYSTORE_PASSWORD")
+val keyAlias: String? = System.getenv("KEY_ALIAS")
+val canSignRelease = keystorePath != null && keystorePassword != null && keyAlias != null
+
 android {
     namespace = "com.hotwire.fisiontv.networkqual"
     compileSdk = 36
@@ -13,14 +30,27 @@ android {
         applicationId = "com.hotwire.fisiontv.networkqual"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = ciVersionCode
+        versionName = ciVersionName
+    }
+
+    if (canSignRelease) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(keystorePath!!)
+                storePassword = keystorePassword
+                this.keyAlias = keyAlias
+                keyPassword = keystorePassword // PKCS12: store and key passwords are the same
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = if (canSignRelease) signingConfigs.getByName("release")
+                else signingConfigs.getByName("debug")
         }
     }
 

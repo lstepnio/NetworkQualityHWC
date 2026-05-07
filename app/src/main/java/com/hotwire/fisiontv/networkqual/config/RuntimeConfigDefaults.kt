@@ -62,8 +62,12 @@ object RuntimeConfigDefaults {
             goodRssiMin = -75,
             rateAdaptationDegradedThreshold = 0.5
         ),
-        // Off until the backend exists; flipping this to `true` with a real
-        // endpoint will start posting results without an APK push.
-        resultsPublishing = ResultsPublishingConfig(enabled = false, endpoint = null)
+        // Pointed at the dev backend running in `make dev` on the lab Mac.
+        // Until the GET /v1/cert-config fetch is wired into RuntimeConfigProvider,
+        // this hardcoded endpoint is what the publish queue will POST to.
+        resultsPublishing = ResultsPublishingConfig(
+            enabled = true,
+            endpoint = "http://192.168.10.233:8080/v1/certifications"
+        )
     )
 }

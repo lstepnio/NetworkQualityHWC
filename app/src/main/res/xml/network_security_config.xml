@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!--
+      Default: enforce HTTPS with the system trust store everywhere. The
+      production cert-config + result endpoints will live behind public TLS
+      (certifier-api.gethotwired.com) and fall through to this default.
+    -->
+    <base-config cleartextTrafficPermitted="false">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+
+    <!--
+      Narrow cleartext exception for the dev backend on the lab LAN. Update
+      this IP if you move `make dev` to a different host. Do NOT widen the
+      domain list to a CIDR or to a generic 192.168.* — keep the surface as
+      small as the lab actually needs.
+    -->
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">192.168.10.233</domain>
+    </domain-config>
+</network-security-config>

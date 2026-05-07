@@ -40,6 +40,7 @@ import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthFailed
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthGood
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthMarginal
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthStrong
+import com.hotwire.fisiontv.networkqual.ui.theme.FisionSuccessGreen
 
 @Composable
 fun ResultsScreen(
@@ -62,11 +63,14 @@ fun ResultsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(Modifier.height(8.dp))
+            // Successful certifications read in green — the brand pink
+            // looked alarming in this position, easy to misread as an
+            // error state. Only Tier.NONE keeps the error treatment.
             Text(
                 text = result.achievedTier.displayName,
                 style = MaterialTheme.typography.displayMedium,
                 color = if (result.achievedTier == Tier.NONE) MaterialTheme.colorScheme.error
-                    else MaterialTheme.colorScheme.primary
+                    else FisionSuccessGreen
             )
             Spacer(Modifier.height(4.dp))
             Text(
@@ -74,21 +78,6 @@ fun ResultsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // Distinguish network capacity from playback achieved on this
-            // particular display. When they match, the line is implicit
-            // ("network 4K HDR, playback 4K HDR" is just noise); when
-            // they diverge, we surface the gap so a tech can see it's
-            // the TV, not the connection.
-            val playback = result.playbackAchievedTier
-            if (playback != result.achievedTier && playback != Tier.NONE) {
-                Spacer(Modifier.height(4.dp))
-                val displayHeight = result.diagnostics.capabilities.display.heightPx
-                Text(
-                    text = "Tested playback: ${playback.displayName} · this display caps at ${displayHeight}p",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
             Spacer(Modifier.height(20.dp))
             MetricsTable(result)
             Spacer(Modifier.height(28.dp))
@@ -113,11 +102,11 @@ fun ResultsScreen(
                 .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {
-            HealthBadge(result.health)
             result.wifiLink?.let {
-                Spacer(Modifier.height(10.dp))
                 WifiLinkCard(it)
+                Spacer(Modifier.height(10.dp))
             }
+            HealthBadge(result.health)
         }
     }
 }
@@ -295,6 +284,7 @@ private fun MetricRow(label: String, value: String, secondary: String) {
             modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.titleMedium
         )
+        Spacer(Modifier.width(32.dp))
         Text(
             secondary,
             modifier = Modifier.weight(1.4f),

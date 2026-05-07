@@ -13,6 +13,13 @@ private const val KEY_DEVICE_ID = "device_id"
 
 object DeviceIdentityCollector {
 
+    /**
+     * Stable per-install UUID, persisted in app private storage. Exposed so
+     * pre-cert-run callers (cert-config fetch on launch) can include
+     * `X-Device-Id` without first running [collect].
+     */
+    fun deviceId(context: Context): String = stableDeviceId(context)
+
     fun collect(context: Context): DeviceIdentity {
         val deviceId = stableDeviceId(context)
         val hsn = readSystemProperty("ro.product.hsnt")?.takeIf { it.isNotBlank() }

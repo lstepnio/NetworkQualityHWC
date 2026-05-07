@@ -34,6 +34,12 @@ android {
         versionName = ciVersionName
     }
 
+    // The CERT_CONFIG_URL bootstraps the GET /v1/cert-config fetch that
+    // overrides RuntimeConfigDefaults at launch. Debug points at the lab
+    // backend on the dev Mac (192.168.10.233:8080); release points at the
+    // production hostname declared in the contract's openapi.yaml. Keep
+    // the network_security_config.xml allow-list aligned with the debug IP.
+
     if (canSignRelease) {
         signingConfigs {
             create("release") {
@@ -46,11 +52,15 @@ android {
     }
 
     buildTypes {
+        debug {
+            buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:8080/v1/cert-config\"")
+        }
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (canSignRelease) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
+            buildConfigField("String", "CERT_CONFIG_URL", "\"https://certifier-api.gethotwired.com/v1/cert-config\"")
         }
     }
 
@@ -65,6 +75,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     testOptions {

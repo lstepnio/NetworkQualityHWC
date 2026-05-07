@@ -55,7 +55,10 @@ class OkHttpResultPublisherTest {
     private fun sampleResult(): CertificationResult {
         val cfg = RuntimeConfigDefaults.bundled
         val download = Fixtures.throughput(steady = 100.0)
-        val latency = LatencyResult(samples = listOf(30L), medianMs = 30, jitterMs = 3)
+        val latency = LatencyResult(
+            samples = listOf(30L), medianMs = 30, p95Ms = 33,
+            jitterMs = 3, attempted = 1, lossPct = 0
+        )
         val playback = Fixtures.playback(peakHeight = 1080)
         val outcome = TierEvaluator(cfg.tiers).evaluate(latency, download, playback)
         val health = HealthAssessor(cfg.tiers, cfg.healthAssessment).assess(outcome.networkAchieved, download, latency)
@@ -72,7 +75,7 @@ class OkHttpResultPublisherTest {
             selectedServerRttMs = 50L,
             serverProbes = listOf(ServerProbe("test", "Test", "test.example.com", 50L, ok = true, selected = true)),
             dns = DnsResult(
-                medianMs = 20L, maxMs = 25L, failureCount = 0,
+                medianMs = 20L, p95Ms = 24L, maxMs = 25L, failureCount = 0,
                 samples = listOf(DnsSample("example.com", 20L, true, listOf("1.2.3.4")))
             ),
             latency = latency,

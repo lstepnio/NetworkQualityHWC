@@ -22,7 +22,11 @@ class CertificationPayloadTest {
     private fun sampleResult(): CertificationResult {
         val tiers = config.tiers
         val download = Fixtures.throughput(steady = 200.0)
-        val latency = LatencyResult(listOf(30L, 32L, 31L), medianMs = 31, jitterMs = 2)
+        val latency = LatencyResult(
+            samples = listOf(30L, 32L, 31L),
+            medianMs = 31, p95Ms = 32, jitterMs = 2,
+            attempted = 3, lossPct = 0
+        )
         val playback = Fixtures.playback(peakHeight = 1080)
         val outcome = TierEvaluator(tiers).evaluate(latency, download, playback)
         val health = HealthAssessor(tiers, config.healthAssessment).assess(outcome.networkAchieved, download, latency)
@@ -42,7 +46,7 @@ class CertificationPayloadTest {
                 ServerProbe(id = "apf", name = "APF", host = "speedtestapf.gethotwired.com", rttMs = 50L, ok = true, selected = true)
             ),
             dns = DnsResult(
-                medianMs = 20L, maxMs = 30L, failureCount = 0,
+                medianMs = 20L, p95Ms = 28L, maxMs = 30L, failureCount = 0,
                 samples = listOf(DnsSample("example.com", 20L, true, listOf("1.2.3.4")))
             ),
             latency = latency,

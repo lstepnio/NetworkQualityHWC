@@ -17,7 +17,10 @@ import com.hotwire.fisiontv.networkqual.cert.probes.ThroughputResult
 class FakeProbeFactory(
     private val server: OoklaServer = Fixtures.server(id = "fake", host = "fake.example.com"),
     private val dns: DnsResult = okDns(),
-    private val latency: LatencyResult = LatencyResult(samples = listOf(30L), medianMs = 30, jitterMs = 3),
+    private val latency: LatencyResult = LatencyResult(
+        samples = listOf(30L), medianMs = 30, p95Ms = 35, jitterMs = 3,
+        attempted = 1, lossPct = 0
+    ),
     private val download: ThroughputResult = ThroughputResult(steadyMbps = 200.0, peakMbps = 230.0, durationSec = 10),
     private val upload: ThroughputResult = ThroughputResult(steadyMbps = 100.0, peakMbps = 120.0, durationSec = 5),
     private val playback: PlaybackResult = Fixtures.playback(peakHeight = 1080),
@@ -69,7 +72,7 @@ class FakeProbeFactory(
 
     companion object {
         fun okDns() = DnsResult(
-            medianMs = 20L, maxMs = 30L, failureCount = 0,
+            medianMs = 20L, p95Ms = 28L, maxMs = 30L, failureCount = 0,
             samples = listOf(DnsSample("example.com", 20L, true, listOf("1.2.3.4")))
         )
     }

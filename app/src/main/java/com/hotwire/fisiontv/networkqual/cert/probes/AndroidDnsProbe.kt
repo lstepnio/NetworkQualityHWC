@@ -40,12 +40,14 @@ class AndroidDnsProbe(
             onProgress((idx + 1).toFloat() / hosts.size)
         }
         val ok = samples.filter { it.success }.map { it.resolveMs }.sorted()
-        val median = if (ok.isEmpty()) Long.MAX_VALUE else ok[ok.size / 2]
+        val median = TcpLatencyProbe.percentile(ok, 0.50)
+        val p95 = TcpLatencyProbe.percentile(ok, 0.95)
         val max = ok.maxOrNull() ?: Long.MAX_VALUE
         val failed = samples.count { !it.success }
-        Log.i(TAG, "samples=$samples median=${median}ms max=${max}ms failed=$failed")
+        Log.i(TAG, "samples=$samples median=${median}ms p95=${p95}ms max=${max}ms failed=$failed")
         DnsResult(
             medianMs = median,
+            p95Ms = p95,
             maxMs = max,
             failureCount = failed,
             samples = samples

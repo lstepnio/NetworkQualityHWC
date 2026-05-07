@@ -28,8 +28,20 @@ object Fixtures {
     fun throughput(steady: Double, peak: Double = steady * 1.1, durationSec: Int = 10) =
         ThroughputResult(steady, peak, durationSec)
 
-    fun latency(median: Long, jitter: Long = 5L, samples: List<Long> = listOf(median)) =
-        LatencyResult(samples = samples, medianMs = median, jitterMs = jitter)
+    fun latency(
+        median: Long,
+        jitter: Long = 5L,
+        p95: Long = median + jitter,
+        lossPct: Int = 0,
+        samples: List<Long> = listOf(median)
+    ) = LatencyResult(
+        samples = samples,
+        medianMs = median,
+        p95Ms = p95,
+        jitterMs = jitter,
+        attempted = samples.size,
+        lossPct = lossPct
+    )
 
     fun playback(
         peakHeight: Int = 1080,

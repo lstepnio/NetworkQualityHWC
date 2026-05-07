@@ -266,11 +266,15 @@ object CertificationPayload {
         })
         put("latency", JSONObject().apply {
             put("medianMs", r.latency.medianMs)
+            put("p95Ms", r.latency.p95Ms)
+            put("lossPct", r.latency.lossPct)
+            put("attempted", r.latency.attempted)
             put("jitterMs", r.latency.jitterMs)
             put("samples", JSONArray(r.latency.samples))
         })
         put("dns", JSONObject().apply {
             put("medianMs", r.dns.medianMs)
+            put("p95Ms", r.dns.p95Ms)
             put("maxMs", r.dns.maxMs)
             put("failureCount", r.dns.failureCount)
             put("samples", JSONArray().apply {

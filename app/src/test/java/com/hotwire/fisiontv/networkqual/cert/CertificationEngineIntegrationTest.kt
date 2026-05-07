@@ -131,7 +131,10 @@ class CertificationEngineIntegrationTest {
     @Test fun `not-certified path produces achievedTier NONE and FAILED health`() = runTest {
         val probes = FakeProbeFactory(
             // Below SD floor on every metric.
-            latency = LatencyResult(samples = listOf(900L), medianMs = 900, jitterMs = 200),
+            latency = LatencyResult(
+                samples = listOf(900L), medianMs = 900, p95Ms = 950,
+                jitterMs = 200, attempted = 1, lossPct = 0
+            ),
             download = ThroughputResult(steadyMbps = 0.5, peakMbps = 1.0, durationSec = 10),
             playback = Fixtures.playback(peakHeight = 240, rebuffers = 5)
         )

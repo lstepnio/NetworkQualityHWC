@@ -240,40 +240,70 @@ private fun WifiLinkCard(link: WifiLinkQuality) {
 @Composable
 private fun MetricsTable(r: CertificationResult) {
     Column {
+        // Latency / DNS follow service-provider best practice: surface
+        // P50 (typical experience), P95 (felt-spike envelope), and
+        // loss% as the primary trio. MAD-based jitter still flows to
+        // the backend payload for advanced/debug views.
+        val dnsTotal = r.dns.samples.size.coerceAtLeast(1)
+        val dnsFailPct = (r.dns.failureCount * 100) / dnsTotal
+
         MetricRow(
             "Download",
-            "${"%.1f".format(r.download.steadyMbps)} Mbps",
-            "peak ${"%.1f".format(r.download.peakMbps)} Mbps"
+            primary = "${"%.1f".format(r.download.steadyMbps)} Mbps",
+            facets = listOf(
+                "peak" to "${"%.1f".format(r.download.peakMbps)} Mbps"
+            )
         )
         MetricRow(
             "Upload",
-            "${"%.1f".format(r.upload.steadyMbps)} Mbps",
-            "peak ${"%.1f".format(r.upload.peakMbps)} Mbps"
+            primary = "${"%.1f".format(r.upload.steadyMbps)} Mbps",
+            facets = listOf(
+                "peak" to "${"%.1f".format(r.upload.peakMbps)} Mbps"
+            )
         )
         MetricRow(
             "Latency",
-            "${r.latency.medianMs} ms",
-            "jitter ± ${r.latency.jitterMs} ms"
-        )
-        MetricRow(
-            "Playback",
-            if (r.playback.peakHeight > 0) "${r.playback.peakHeight}p" else "no video",
-            "${r.playback.peakBitrateKbps} kbps · ${r.playback.rebufferCount} rebuf"
+            primary = "${r.latency.medianMs} ms",
+            facets = listOf(
+                "P95" to "${r.latency.p95Ms} ms",
+                "loss" to "${r.latency.lossPct}%"
+            )
         )
         MetricRow(
             "DNS",
-            "${r.dns.medianMs} ms",
-            if (r.dns.failureCount > 0) "${r.dns.failureCount} of ${r.dns.samples.size} failed" else "max ${r.dns.maxMs} ms"
+            primary = "${r.dns.medianMs} ms",
+            facets = listOf(
+                "P95" to "${r.dns.p95Ms} ms",
+                "fail" to "$dnsFailPct%"
+            )
+        )
+        MetricRow(
+            "Playback",
+            primary = if (r.playback.peakHeight > 0) "${r.playback.peakHeight}p" else "no video",
+            facets = listOf(
+                "bitrate" to "${r.playback.peakBitrateKbps} kbps",
+                "rebuf" to "${r.playback.rebufferCount}"
+            )
         )
     }
 }
 
+/**
+ * One row in the metrics table:
+ *
+ *   [label]  [primary]   k1 v1 · k2 v2 · k3 v3
+ *
+ * Label is fixed-width so values column-align across rows; primary is
+ * the headline number (median latency, steady throughput, peak height);
+ * facets are key/value pairs joined by `·`, each key dimmer than its
+ * value so the eye lands on the numbers.
+ */
 @Composable
-private fun MetricRow(label: String, value: String, secondary: String) {
-    // Fixed-width label + fixed-width value mean the value never wraps
-    // regardless of the screen's logical-dp width (1080p TV vs 4K TV
-    // both work). Secondary takes the remaining space and ellipsizes
-    // on the unlikely case it overflows.
+private fun MetricRow(
+    label: String,
+    primary: String,
+    facets: List<Pair<String, String>>
+) {
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
@@ -285,7 +315,7 @@ private fun MetricRow(label: String, value: String, secondary: String) {
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
-            value,
+            primary,
             modifier = Modifier.width(160.dp),
             style = MaterialTheme.typography.titleMedium,
             softWrap = false,
@@ -293,14 +323,32 @@ private fun MetricRow(label: String, value: String, secondary: String) {
             overflow = TextOverflow.Visible
         )
         Spacer(Modifier.width(28.dp))
-        Text(
-            secondary,
+        Row(
             modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            facets.forEachIndexed { i, (k, v) ->
+                if (i > 0) {
+                    Text(
+                        " · ",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline
+                    )
+                }
+                Text(
+                    "$k ",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    v,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onBackground,
+                    softWrap = false,
+                    maxLines = 1
+                )
+            }
+        }
     }
 }
 

@@ -114,7 +114,7 @@ class CertificationEngine(
             }
 
             val outcome = tierEvaluator.evaluate(latency, download, playback)
-            val health = healthAssessor.assess(outcome.achieved, download, latency)
+            val health = healthAssessor.assess(outcome.networkAchieved, download, latency)
             val wifiLink = diagnostics.wifi?.let { wifiAssessor.assess(it) }
 
             val result = CertificationResult(
@@ -122,7 +122,8 @@ class CertificationEngine(
                 configVersion = config.configVersion,
                 startedAtMs = startedAtMs,
                 timestampMs = System.currentTimeMillis(),
-                achievedTier = outcome.achieved,
+                achievedTier = outcome.networkAchieved,
+                playbackAchievedTier = outcome.playbackAchieved,
                 selectedServer = server,
                 selectedServerRttMs = selection.selectedRttMs,
                 serverProbes = serverProbes,
@@ -147,7 +148,7 @@ class CertificationEngine(
     private fun logSummary(r: CertificationResult) {
         Log.i(
             TAG,
-            "complete: id=${r.certificationId} tier=${r.achievedTier} headroom=${r.health.headroomPct}% rating=${r.health.rating} limitedBy=${r.health.limitingMetric}"
+            "complete: id=${r.certificationId} network=${r.achievedTier} playback=${r.playbackAchievedTier} headroom=${r.health.headroomPct}% rating=${r.health.rating} limitedBy=${r.health.limitingMetric}"
         )
         r.wifiLink?.let {
             Log.i(TAG, "wifiLink: rating=${it.rating} rssi=${it.rssiDbm}dBm rate=${it.linkSpeedMbps}/${it.maxSupportedMbps ?: "?"}Mbps")

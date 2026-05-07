@@ -45,10 +45,12 @@ class CertificationEngineIntegrationTest {
             val complete = events.filterIsInstance<EngineEvent.Complete>().single()
             val r = complete.result
 
-            // Achieved tier reflects the canned probe outputs:
-            // download 200 Mbps, latency 30 ms, jitter 3 ms, playback 1080p.
-            // Above HD floor; 4K fails on minPlaybackHeight=2160.
-            assertThat(r.achievedTier).isEqualTo(Tier.HD)
+            // Network tier reflects throughput/latency/jitter alone:
+            // 200 Mbps DL, 30 ms latency, 3 ms jitter clears 4K HDR.
+            // Playback tier is constrained by the 1080p canned playback
+            // result, so it caps at HD.
+            assertThat(r.achievedTier).isEqualTo(Tier.UHD_4K_HDR)
+            assertThat(r.playbackAchievedTier).isEqualTo(Tier.HD)
             assertThat(r.serverProbes).hasSize(1)
             assertThat(r.serverProbes.single().selected).isTrue()
             assertThat(r.dns.failureCount).isEqualTo(0)

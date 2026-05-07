@@ -25,7 +25,7 @@ class CertificationPayloadTest {
         val latency = LatencyResult(listOf(30L, 32L, 31L), medianMs = 31, jitterMs = 2)
         val playback = Fixtures.playback(peakHeight = 1080)
         val outcome = TierEvaluator(tiers).evaluate(latency, download, playback)
-        val health = HealthAssessor(tiers, config.healthAssessment).assess(outcome.achieved, download, latency)
+        val health = HealthAssessor(tiers, config.healthAssessment).assess(outcome.networkAchieved, download, latency)
         val diagnostics = FakeDiagnostics.build()
         val wifiLink = diagnostics.wifi?.let { WifiLinkQualityAssessor(config.wifiLinkQuality).assess(it) }
 
@@ -34,7 +34,8 @@ class CertificationPayloadTest {
             configVersion = config.configVersion,
             startedAtMs = 1_700_000_000_000L,
             timestampMs = 1_700_000_060_000L,
-            achievedTier = outcome.achieved,
+            achievedTier = outcome.networkAchieved,
+            playbackAchievedTier = outcome.playbackAchieved,
             selectedServer = Fixtures.server(id = "apf", host = "speedtestapf.gethotwired.com"),
             selectedServerRttMs = 50L,
             serverProbes = listOf(

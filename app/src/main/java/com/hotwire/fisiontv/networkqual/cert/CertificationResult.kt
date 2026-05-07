@@ -12,7 +12,21 @@ data class CertificationResult(
     val configVersion: String,
     val startedAtMs: Long,
     val timestampMs: Long,
+    /**
+     * The certification headline — what the **network** can support
+     * (throughput + latency + jitter), independent of what the connected
+     * display managed to render. This is the number that matches what
+     * FisionTV+ would actually deliver given a sufficient display.
+     */
     val achievedTier: Tier,
+    /**
+     * What the **playback** test actually achieved during this run,
+     * constrained by the connected display + HDMI link. May be lower
+     * than [achievedTier] when a 1080p TV is plugged into an STB on a
+     * 4K-capable connection. Equal to [achievedTier] when the display
+     * isn't the bottleneck.
+     */
+    val playbackAchievedTier: Tier,
     val selectedServer: OoklaServer,
     val selectedServerRttMs: Long,
     val serverProbes: List<ServerProbe>,

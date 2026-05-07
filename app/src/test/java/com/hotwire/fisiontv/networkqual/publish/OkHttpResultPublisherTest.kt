@@ -58,7 +58,7 @@ class OkHttpResultPublisherTest {
         val latency = LatencyResult(samples = listOf(30L), medianMs = 30, jitterMs = 3)
         val playback = Fixtures.playback(peakHeight = 1080)
         val outcome = TierEvaluator(cfg.tiers).evaluate(latency, download, playback)
-        val health = HealthAssessor(cfg.tiers, cfg.healthAssessment).assess(outcome.achieved, download, latency)
+        val health = HealthAssessor(cfg.tiers, cfg.healthAssessment).assess(outcome.networkAchieved, download, latency)
         val diagnostics = FakeDiagnostics.build()
         val wifiLink = diagnostics.wifi?.let { WifiLinkQualityAssessor(cfg.wifiLinkQuality).assess(it) }
         return CertificationResult(
@@ -66,7 +66,8 @@ class OkHttpResultPublisherTest {
             configVersion = cfg.configVersion,
             startedAtMs = 1L,
             timestampMs = 2L,
-            achievedTier = outcome.achieved,
+            achievedTier = outcome.networkAchieved,
+            playbackAchievedTier = outcome.playbackAchieved,
             selectedServer = Fixtures.server(),
             selectedServerRttMs = 50L,
             serverProbes = listOf(ServerProbe("test", "Test", "test.example.com", 50L, ok = true, selected = true)),

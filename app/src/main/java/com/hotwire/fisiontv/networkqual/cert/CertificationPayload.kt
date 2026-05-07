@@ -204,6 +204,7 @@ object CertificationPayload {
 
     private fun resultJson(r: CertificationResult): JSONObject = JSONObject().apply {
         put("achievedTier", tierId(r.achievedTier))
+        put("playbackAchievedTier", tierId(r.playbackAchievedTier))
         putOrNull("marginalMetric", r.health.limitingMetric)
         put("tierBreakdown", JSONArray().apply {
             r.tierBreakdown.forEach { e ->

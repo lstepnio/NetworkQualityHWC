@@ -57,7 +57,7 @@ fun ResultsScreen(
             verticalArrangement = Arrangement.Center
         ) {
             Text(
-                "Certification result",
+                "Network certified for",
                 style = MaterialTheme.typography.titleLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -74,6 +74,21 @@ fun ResultsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            // Distinguish network capacity from playback achieved on this
+            // particular display. When they match, the line is implicit
+            // ("network 4K HDR, playback 4K HDR" is just noise); when
+            // they diverge, we surface the gap so a tech can see it's
+            // the TV, not the connection.
+            val playback = result.playbackAchievedTier
+            if (playback != result.achievedTier && playback != Tier.NONE) {
+                Spacer(Modifier.height(4.dp))
+                val displayHeight = result.diagnostics.capabilities.display.heightPx
+                Text(
+                    text = "Tested playback: ${playback.displayName} · this display caps at ${displayHeight}p",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(Modifier.height(20.dp))
             MetricsTable(result)
             Spacer(Modifier.height(28.dp))

@@ -14,11 +14,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -37,14 +34,12 @@ import com.hotwire.fisiontv.networkqual.cert.CertificationResult
 import com.hotwire.fisiontv.networkqual.cert.HealthAssessment
 import com.hotwire.fisiontv.networkqual.cert.HealthRating
 import com.hotwire.fisiontv.networkqual.cert.Tier
-import com.hotwire.fisiontv.networkqual.cert.TierEvaluation
 import com.hotwire.fisiontv.networkqual.cert.WifiLinkQuality
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthExcellent
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthFailed
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthGood
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthMarginal
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthStrong
-import com.hotwire.fisiontv.networkqual.ui.theme.FisionSuccessGreen
 
 @Composable
 fun ResultsScreen(
@@ -100,15 +95,14 @@ fun ResultsScreen(
         Column(
             modifier = Modifier
                 .weight(1f)
+                .fillMaxHeight()
                 .verticalScroll(rememberScrollState())
         ) {
             HealthBadge(result.health)
             result.wifiLink?.let {
-                Spacer(Modifier.height(12.dp))
+                Spacer(Modifier.height(10.dp))
                 WifiLinkCard(it)
             }
-            Spacer(Modifier.height(20.dp))
-            TierBreakdown(evals = result.tierBreakdown.filter { it.passed })
         }
     }
 }
@@ -132,29 +126,28 @@ private fun HealthBadge(health: HealthAssessment) {
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(12.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = color,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(36.dp)
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
                         health.rating.displayName,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge,
                         color = Color.White
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     "Headroom ${health.headroomPct}%",
-                    style = MaterialTheme.typography.titleLarge
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
-            Spacer(Modifier.height(10.dp))
-            HeadroomBar(health.headroomPct, color)
             Spacer(Modifier.height(8.dp))
+            HeadroomBar(health.headroomPct, color)
+            Spacer(Modifier.height(6.dp))
             Text(
                 subline,
                 style = MaterialTheme.typography.bodyMedium,
@@ -170,14 +163,14 @@ private fun HeadroomBar(pct: Int, color: Color) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(10.dp)
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(6.dp))
+            .height(8.dp)
+            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(frac)
-                .height(10.dp)
-                .background(color, RoundedCornerShape(6.dp))
+                .height(8.dp)
+                .background(color, RoundedCornerShape(4.dp))
         )
     }
 }
@@ -196,27 +189,26 @@ private fun WifiLinkCard(link: WifiLinkQuality) {
         color = MaterialTheme.colorScheme.surfaceVariant,
         shape = RoundedCornerShape(12.dp)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Surface(
                     color = color,
-                    shape = RoundedCornerShape(8.dp),
-                    modifier = Modifier.height(36.dp)
+                    shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
                         link.rating.displayName,
-                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.titleMedium,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelLarge,
                         color = Color.White
                     )
                 }
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(10.dp))
                 Text(
                     "Wi-Fi link",
-                    style = MaterialTheme.typography.titleLarge
+                    style = MaterialTheme.typography.titleMedium
                 )
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(6.dp))
             Text(
                 link.advice,
                 style = MaterialTheme.typography.bodyMedium,
@@ -283,44 +275,3 @@ private fun MetricRow(label: String, value: String, secondary: String) {
     }
 }
 
-@Composable
-private fun TierBreakdown(evals: List<TierEvaluation>, modifier: Modifier = Modifier) {
-    Column(modifier = modifier) {
-        Text("Supported tiers", style = MaterialTheme.typography.titleLarge)
-        Spacer(Modifier.height(12.dp))
-        if (evals.isEmpty()) {
-            Text(
-                "This connection didn't meet any FisionTV+ streaming tier.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            evals.forEach { eval ->
-                TierEvalCard(eval)
-                Spacer(Modifier.height(8.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun TierEvalCard(eval: TierEvaluation) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = Icons.Filled.CheckCircle,
-                contentDescription = null,
-                tint = FisionSuccessGreen
-            )
-            Spacer(Modifier.width(12.dp))
-            Text(eval.tier.displayName, style = MaterialTheme.typography.titleLarge)
-        }
-    }
-}

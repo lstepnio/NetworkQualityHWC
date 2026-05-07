@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextOverflow
 import com.hotwire.fisiontv.networkqual.cert.CertificationResult
 import com.hotwire.fisiontv.networkqual.cert.HealthAssessment
 import com.hotwire.fisiontv.networkqual.cert.HealthRating
@@ -257,7 +258,7 @@ private fun MetricsTable(r: CertificationResult) {
         MetricRow(
             "Playback",
             if (r.playback.peakHeight > 0) "${r.playback.peakHeight}p" else "no video",
-            "${r.playback.rebufferCount} rebuffers · ${r.playback.peakBitrateKbps} kbps peak"
+            "${r.playback.peakBitrateKbps} kbps · ${r.playback.rebufferCount} rebuf"
         )
         MetricRow(
             "DNS",
@@ -269,27 +270,36 @@ private fun MetricsTable(r: CertificationResult) {
 
 @Composable
 private fun MetricRow(label: String, value: String, secondary: String) {
+    // Fixed-width label + fixed-width value mean the value never wraps
+    // regardless of the screen's logical-dp width (1080p TV vs 4K TV
+    // both work). Secondary takes the remaining space and ellipsizes
+    // on the unlikely case it overflows.
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             label,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.width(110.dp),
             style = MaterialTheme.typography.bodyLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
         Text(
             value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleMedium
+            modifier = Modifier.width(160.dp),
+            style = MaterialTheme.typography.titleMedium,
+            softWrap = false,
+            maxLines = 1,
+            overflow = TextOverflow.Visible
         )
-        Spacer(Modifier.width(32.dp))
+        Spacer(Modifier.width(28.dp))
         Text(
             secondary,
-            modifier = Modifier.weight(1.4f),
+            modifier = Modifier.weight(1f),
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
         )
     }
 }

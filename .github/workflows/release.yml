@@ -27,12 +27,16 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
 
       - name: Decode keystore
+        id: keystore
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         run: |
-          mkdir -p $HOME/.fision-keystores
-          echo "$KEYSTORE_BASE64" | base64 -d > $HOME/.fision-keystores/release.jks
-          test -s $HOME/.fision-keystores/release.jks || (echo "decoded keystore is empty" && exit 1)
+          KEYSTORE_DIR="${RUNNER_TEMP}/keystore"
+          mkdir -p "$KEYSTORE_DIR"
+          KEYSTORE_PATH="$KEYSTORE_DIR/release.jks"
+          echo "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          test -s "$KEYSTORE_PATH" || (echo "decoded keystore is empty" && exit 1)
+          echo "path=$KEYSTORE_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Derive version
         id: version
@@ -48,7 +52,7 @@ jobs:
         env:
           FISION_VERSION_NAME: ${{ steps.version.outputs.name }}
           FISION_VERSION_CODE: ${{ steps.version.outputs.code }}
-          KEYSTORE_PATH: ${{ env.HOME }}/.fision-keystores/release.jks
+          KEYSTORE_PATH: ${{ steps.keystore.outputs.path }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         run: ./gradlew assembleRelease --stacktrace

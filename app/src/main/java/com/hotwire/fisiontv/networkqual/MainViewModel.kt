@@ -11,6 +11,10 @@ import com.hotwire.fisiontv.networkqual.config.RuntimeConfigProvider
 import com.hotwire.fisiontv.networkqual.data.AppDatabase
 import com.hotwire.fisiontv.networkqual.data.HistoryEntity
 import com.hotwire.fisiontv.networkqual.data.toEntity
+import com.hotwire.fisiontv.networkqual.publish.NoAuthProvider
+import com.hotwire.fisiontv.networkqual.publish.OkHttpResultPublisher
+import com.hotwire.fisiontv.networkqual.publish.PublishOutcome
+import com.hotwire.fisiontv.networkqual.publish.ResultPublisher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +54,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // Re-read config per run so a refresh that arrived between runs
         // (once the cert-config API is wired) takes effect on the next click
         // of "Run again" without an app restart.
-        val engine = CertificationEngine(getApplication(), configProvider.current())
+        val config = configProvider.current()
+        val engine = CertificationEngine(getApplication(), config)
         runJob = viewModelScope.launch {
             _state.value = UiState.Running(TestStep.DNS, 0f, 0f)
             engine.run().collect { event ->
@@ -62,11 +67,35 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         withContext(Dispatchers.IO) {
                             historyDao.insert(event.result.toEntity())
                         }
+                        publishIfEnabled(event.result, config)
                     }
                     is EngineEvent.Failed ->
                         _state.value = UiState.Failed(event.step, event.cause)
                 }
             }
+        }
+    }
+
+    private suspend fun publishIfEnabled(
+        result: CertificationResult,
+        config: com.hotwire.fisiontv.networkqual.config.RuntimeConfig
+    ) {
+        val pub = config.resultsPublishing
+        if (!pub.enabled || pub.endpoint.isNullOrBlank()) return
+        val publisher: ResultPublisher = OkHttpResultPublisher(
+            endpoint = pub.endpoint,
+            authProvider = NoAuthProvider, // see contract/SPEC.md §5
+            deviceId = result.diagnostics.identity.deviceId,
+            appVersion = result.diagnostics.device.appVersion,
+            schemaVersion = 1
+        )
+        val outcome = withContext(Dispatchers.IO) { publisher.publish(result) }
+        when (outcome) {
+            is PublishOutcome.Success, is PublishOutcome.Duplicate -> Unit
+            is PublishOutcome.TransientFailure ->
+                android.util.Log.w("MainViewModel", "result publish transient: ${outcome.cause}")
+            is PublishOutcome.PermanentFailure ->
+                android.util.Log.e("MainViewModel", "result publish permanent ${outcome.httpStatus}: ${outcome.cause}")
         }
     }
 

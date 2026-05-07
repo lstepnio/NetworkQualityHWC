@@ -2,9 +2,11 @@ package com.hotwire.fisiontv.networkqual.cert
 
 import android.content.Context
 import android.util.Log
+import com.hotwire.fisiontv.networkqual.cert.probes.DefaultProbeFactory
 import com.hotwire.fisiontv.networkqual.cert.probes.ProbeFactory
 import com.hotwire.fisiontv.networkqual.cert.probes.ServerSelector
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
+import com.hotwire.fisiontv.networkqual.diagnostics.NetworkDiagnostics
 import com.hotwire.fisiontv.networkqual.diagnostics.NetworkDiagnosticsCollector
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -23,13 +25,24 @@ import java.util.UUID
  * irrelevant (no server selected) or misleading (bandwidth without latency).
  */
 class CertificationEngine(
-    private val context: Context,
     private val config: RuntimeConfig,
-    private val probes: ProbeFactory = ProbeFactory(context, config),
+    private val probes: ProbeFactory,
+    private val collectDiagnostics: () -> NetworkDiagnostics,
     private val tierEvaluator: TierEvaluator = TierEvaluator(config.tiers),
     private val healthAssessor: HealthAssessor = HealthAssessor(config.tiers, config.healthAssessment),
     private val wifiAssessor: WifiLinkQualityAssessor = WifiLinkQualityAssessor(config.wifiLinkQuality)
 ) {
+
+    /**
+     * Production constructor. Resolves probes and diagnostics from the
+     * Android context. Tests should use the primary constructor with
+     * fakes instead.
+     */
+    constructor(context: Context, config: RuntimeConfig) : this(
+        config = config,
+        probes = DefaultProbeFactory(context, config),
+        collectDiagnostics = { NetworkDiagnosticsCollector.collect(context) }
+    )
 
     private class HaltSignal : Throwable() {
         override fun fillInStackTrace(): Throwable = this
@@ -70,7 +83,7 @@ class CertificationEngine(
         }
 
         try {
-            val diagnostics = NetworkDiagnosticsCollector.collect(context)
+            val diagnostics = collectDiagnostics()
 
             val dns = phase(TestStep.DNS) { progress -> probes.dnsProbe().run(progress) }
 

@@ -4,18 +4,33 @@ import android.content.Context
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
 
 /**
- * Builds the per-phase probes for the engine. Centralizing construction
- * here means the engine never imports concrete probe classes — swap in an
- * Ookla-SDK-backed download probe by editing one method.
+ * Provides the per-phase probes the engine consumes. Engine depends on
+ * this interface only — concrete probe classes live behind it. Swap in an
+ * Ookla-SDK-backed download probe by writing a new ProbeFactory and
+ * passing it to the engine.
  */
-class ProbeFactory(
+interface ProbeFactory {
+    fun serverSelector(): ServerSelector
+    fun dnsProbe(): DnsProbe
+    fun latencyProbe(): LatencyProbe
+    fun downloadProbe(): DownloadProbe
+    fun uploadProbe(): UploadProbe
+    fun playbackProbe(): PlaybackProbe
+}
+
+/**
+ * Production probe factory backed by hand-rolled OkHttp / TCP / Media3
+ * implementations. Constructs fresh probes per call so each phase gets an
+ * isolated client; cheap given how rarely runs happen.
+ */
+class DefaultProbeFactory(
     private val context: Context,
     private val config: RuntimeConfig
-) {
-    fun serverSelector(): ServerSelector = TcpServerSelectorProbe(config.servers)
-    fun dnsProbe(): DnsProbe = AndroidDnsProbe(context, config.dnsProbeHosts)
-    fun latencyProbe(): LatencyProbe = TcpLatencyProbe(config.tests.latency)
-    fun downloadProbe(): DownloadProbe = HttpDownloadProbe(config.tests.download)
-    fun uploadProbe(): UploadProbe = HttpUploadProbe(config.tests.upload)
-    fun playbackProbe(): PlaybackProbe = Media3PlaybackProbe(context, config.tests.playback)
+) : ProbeFactory {
+    override fun serverSelector(): ServerSelector = TcpServerSelectorProbe(config.servers)
+    override fun dnsProbe(): DnsProbe = AndroidDnsProbe(context, config.dnsProbeHosts)
+    override fun latencyProbe(): LatencyProbe = TcpLatencyProbe(config.tests.latency)
+    override fun downloadProbe(): DownloadProbe = HttpDownloadProbe(config.tests.download)
+    override fun uploadProbe(): UploadProbe = HttpUploadProbe(config.tests.upload)
+    override fun playbackProbe(): PlaybackProbe = Media3PlaybackProbe(context, config.tests.playback)
 }

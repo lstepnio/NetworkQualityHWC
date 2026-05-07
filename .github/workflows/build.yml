@@ -35,6 +35,17 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew assembleDebug --stacktrace
 
+      - name: Run unit tests
+        run: ./gradlew test --stacktrace
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: app/build/reports/tests/
+          if-no-files-found: ignore
+
       - name: Run lint
         run: ./gradlew lint --stacktrace
         continue-on-error: true

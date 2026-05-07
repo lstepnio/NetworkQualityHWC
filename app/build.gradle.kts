@@ -66,6 +66,15 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            // android.util.Log and other framework stubs throw by default
+            // in unit tests; flip them to silently return zero so the
+            // engine's logging calls don't blow up the suite.
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 dependencies {
@@ -93,4 +102,11 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
+
+    testImplementation(libs.junit)
+    testImplementation(libs.truth)
+    testImplementation(libs.mockk)
+    testImplementation(libs.turbine)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.org.json)
 }

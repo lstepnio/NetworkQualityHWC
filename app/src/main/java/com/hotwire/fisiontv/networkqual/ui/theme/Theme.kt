@@ -10,6 +10,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
 val FisionPink = Color(0xFFEE3D5B)
+val FisionPinkSoft = Color(0xFFFF7B9A)
 val FisionNavy = Color(0xFF0E1B2D)
 val FisionNavyLight = Color(0xFF16263D)
 val FisionSuccessGreen = Color(0xFF22C55E)

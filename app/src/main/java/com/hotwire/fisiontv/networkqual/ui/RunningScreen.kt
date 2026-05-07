@@ -16,14 +16,17 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.outlined.RadioButtonUnchecked
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.hotwire.fisiontv.networkqual.cert.TestStep
+import com.hotwire.fisiontv.networkqual.ui.components.ModernProgressBar
+import com.hotwire.fisiontv.networkqual.ui.theme.FisionPink
+import com.hotwire.fisiontv.networkqual.ui.theme.FisionPinkSoft
 
 @Composable
 fun RunningScreen(
@@ -56,19 +59,30 @@ fun RunningScreen(
             Spacer(Modifier.height(16.dp))
         }
 
-        Spacer(Modifier.height(24.dp))
-        Text(
-            "Overall progress: ${(overallFrac * 100).toInt()}%",
-            style = MaterialTheme.typography.bodyLarge
-        )
-        Spacer(Modifier.height(8.dp))
-        LinearProgressIndicator(
-            progress = { overallFrac },
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(8.dp),
-            color = MaterialTheme.colorScheme.primary,
-            trackColor = MaterialTheme.colorScheme.surfaceVariant
+        Spacer(Modifier.height(28.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "Overall progress",
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${(overallFrac * 100).toInt()}%",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary
+            )
+        }
+        Spacer(Modifier.height(12.dp))
+        ModernProgressBar(
+            progress = overallFrac,
+            trackColor = MaterialTheme.colorScheme.surfaceVariant,
+            fillStart = FisionPink,
+            fillEnd = FisionPinkSoft
         )
     }
 }

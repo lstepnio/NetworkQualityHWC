@@ -1,0 +1,720 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>FisionTV+ Results screen — 10 explorations</title>
+<style>
+  :root {
+    --pink: #EE3D5B;
+    --pink-soft: #FF7B9A;
+    --navy-deep: #0E1B2D;
+    --navy: #16263D;
+    --slate: #2D3A4D;
+    --slate-light: #3a4a60;
+    --green: #22C55E;
+    --strong: #84CC16;
+    --good: #EAB308;
+    --marginal: #F97316;
+    --failed: #EF4444;
+    --offwhite: #F5EEE0;
+    --muted: #B0BCD0;
+    --outline: #5C7390;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #1a1a1a; color: #ddd; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; }
+  body { padding: 32px 24px 96px; }
+  header.page {
+    max-width: 1340px; margin: 0 auto 32px; padding: 0 30px;
+  }
+  header.page h1 { margin: 0 0 8px; font-size: 28px; font-weight: 600; }
+  header.page p { margin: 0; color: #888; font-size: 14px; line-height: 1.5; }
+  section.concept {
+    max-width: 1340px; margin: 40px auto; padding: 30px;
+    background: #232323; border-radius: 14px;
+  }
+  section.concept h2 {
+    margin: 0 0 4px; font-size: 18px; font-weight: 600; color: #ddd;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  section.concept h2 .num {
+    color: #888; font-size: 14px; font-weight: 500;
+    background: #2c2c2c; padding: 2px 9px; border-radius: 10px;
+  }
+  section.concept .notes {
+    margin: 6px 0 18px; color: #888; font-size: 13px; line-height: 1.55;
+  }
+  section.concept .notes b { color: #aaa; }
+
+  /* Each mock is a 1280×720 TV-sized canvas */
+  .mock {
+    width: 1280px; height: 720px;
+    background: var(--navy-deep);
+    color: var(--offwhite);
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    /* Use system fonts that read well on TV */
+    font-family: -apple-system, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+  }
+
+  /* ===== Common ingredient: ratings + chips ===== */
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px;
+    font-size: 14px; font-weight: 600; color: #fff;
+    line-height: 1;
+  }
+  .pill.green { background: var(--green); }
+  .pill.strong { background: var(--strong); color: #1a1a1a; }
+  .pill.good { background: var(--good); color: #1a1a1a; }
+  .pill.marginal { background: var(--marginal); }
+  .pill.failed { background: var(--failed); }
+  .pill.muted { background: var(--slate); color: var(--muted); }
+
+  .progress-bar {
+    width: 100%; height: 10px; background: var(--slate);
+    border-radius: 5px; overflow: hidden; position: relative;
+  }
+  .progress-bar .fill { height: 100%; border-radius: 5px; background: linear-gradient(90deg, var(--green), #4ade80); }
+  .progress-bar .fill.marginal { background: linear-gradient(90deg, var(--marginal), #fb923c); }
+
+  /* ====================================================== */
+  /* 1. VERDICT-FIRST HERO                                  */
+  /* ====================================================== */
+  .v1 { display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 40px; }
+  .v1 .label { font-size: 22px; color: var(--muted); letter-spacing: 0.5px; margin-bottom: 12px; }
+  .v1 .verdict-icon { font-size: 80px; color: var(--green); line-height: 1; margin-bottom: 4px; }
+  .v1 .tier { font-size: 140px; font-weight: 800; color: var(--green); line-height: 1; letter-spacing: -3px; }
+  .v1 .sub { font-size: 22px; color: var(--muted); margin-top: 14px; }
+  .v1 .chips { display: flex; gap: 16px; margin-top: 38px; }
+  .v1 .chip { background: var(--slate); padding: 14px 22px; border-radius: 12px;
+              display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+  .v1 .chip .k { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .v1 .chip .v { font-size: 22px; font-weight: 600; }
+  .v1 .chip .v.warn { color: var(--marginal); }
+
+  /* ====================================================== */
+  /* 2. STATUS & ACTIONS                                    */
+  /* ====================================================== */
+  .v2 { padding: 50px 60px; display: flex; flex-direction: column; gap: 24px; }
+  .v2 .top { display: flex; justify-content: space-between; align-items: flex-start; }
+  .v2 .verdict { display: flex; flex-direction: column; gap: 4px; }
+  .v2 .verdict .label { font-size: 20px; color: var(--muted); }
+  .v2 .verdict .tier { font-size: 76px; font-weight: 800; color: var(--green); line-height: 1; }
+  .v2 .verdict .sub { font-size: 18px; color: var(--muted); margin-top: 4px; }
+  .v2 .head-card { background: var(--slate); padding: 18px 24px; border-radius: 12px;
+                    min-width: 320px; text-align: right; }
+  .v2 .head-card .pill-row { display: flex; justify-content: flex-end; align-items: center; gap: 10px; }
+  .v2 .head-card .pct { font-size: 36px; font-weight: 700; }
+  .v2 .head-card .label { font-size: 13px; color: var(--muted); margin-top: 4px; text-transform: uppercase; letter-spacing: 0.8px; }
+  .v2 hr { border: 0; border-top: 1px solid var(--slate); margin: 8px 0; }
+  .v2 .actions h3 { margin: 0 0 14px; font-size: 22px; font-weight: 600; color: var(--offwhite); }
+  .v2 .action { display: flex; gap: 16px; padding: 16px 18px; background: var(--slate);
+                border-radius: 12px; margin-bottom: 10px; align-items: flex-start; }
+  .v2 .action .num { width: 32px; height: 32px; background: var(--pink); color: #fff; border-radius: 16px;
+                     display: flex; align-items: center; justify-content: center; font-weight: 700; flex-shrink: 0; }
+  .v2 .action .body .t { font-size: 18px; font-weight: 600; }
+  .v2 .action .body .d { font-size: 15px; color: var(--muted); margin-top: 2px; line-height: 1.4; }
+
+  /* ====================================================== */
+  /* 3. HEALTH RINGS                                        */
+  /* ====================================================== */
+  .v3 { padding: 40px 60px; display: grid; grid-template-columns: 580px 1fr; gap: 40px; align-items: center; }
+  .v3 .rings { display: flex; flex-direction: column; gap: 22px; }
+  .v3 .ring-item { display: flex; align-items: center; gap: 22px; }
+  .ring { width: 130px; height: 130px; flex-shrink: 0; position: relative; }
+  .ring svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .ring .label-pct { position: absolute; inset: 0; display: flex; flex-direction: column;
+                     align-items: center; justify-content: center; }
+  .ring .pct { font-size: 30px; font-weight: 800; line-height: 1; }
+  .ring .lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-top: 3px; letter-spacing: 0.5px; }
+  .v3 .ring-item .copy .t { font-size: 24px; font-weight: 600; }
+  .v3 .ring-item .copy .d { font-size: 16px; color: var(--muted); margin-top: 4px; }
+  .v3 .right h2 { margin: 0 0 8px; font-size: 38px; font-weight: 800; color: var(--green); }
+  .v3 .right .server { color: var(--muted); margin-bottom: 26px; font-size: 16px; }
+  .v3 .right h3 { margin: 0 0 14px; font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .v3 .recs li { padding: 8px 0; color: var(--offwhite); font-size: 16px; line-height: 1.4; }
+  .v3 .recs li b { color: var(--marginal); margin-right: 8px; }
+
+  /* ====================================================== */
+  /* 4. STOPLIGHT                                           */
+  /* ====================================================== */
+  .v4 { display: flex; flex-direction: column; align-items: center; justify-content: center;
+        padding: 40px; gap: 28px; }
+  .light { width: 220px; height: 220px; border-radius: 50%; background: var(--good);
+           box-shadow: 0 0 80px rgba(234, 179, 8, 0.45), inset -16px -16px 50px rgba(0,0,0,0.25); }
+  .v4 .verdict { font-size: 56px; font-weight: 800; line-height: 1.1; text-align: center; max-width: 1000px; }
+  .v4 .verdict .tier { color: var(--green); }
+  .v4 .narration { font-size: 20px; color: var(--muted); text-align: center; max-width: 880px; line-height: 1.45; }
+  .v4 .row { display: flex; gap: 60px; }
+  .v4 .row .item { display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 160px; }
+  .v4 .row .item .icon { font-size: 28px; }
+  .v4 .row .item .icon.ok { color: var(--green); }
+  .v4 .row .item .icon.warn { color: var(--good); }
+  .v4 .row .item .name { font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; }
+  .v4 .row .item .val { font-size: 18px; font-weight: 600; }
+
+  /* ====================================================== */
+  /* 5. ITEMIZED RECEIPT                                    */
+  /* ====================================================== */
+  .v5 { padding: 50px 90px; display: flex; flex-direction: column; gap: 16px;
+        font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .v5 h1 { margin: 0; font-size: 32px; font-weight: 700; letter-spacing: 1px; color: var(--offwhite);
+           border-bottom: 2px solid var(--slate); padding-bottom: 12px; }
+  .v5 .receipt-row { display: flex; align-items: baseline; padding: 4px 0; font-size: 22px; }
+  .v5 .receipt-row .key { color: var(--muted); flex: 0 0 270px; letter-spacing: 0.5px; }
+  .v5 .receipt-row .dots { flex: 1; border-bottom: 2px dotted var(--slate); margin: 0 12px; transform: translateY(-7px); }
+  .v5 .receipt-row .val { font-weight: 700; }
+  .v5 .receipt-row .val.green { color: var(--green); }
+  .v5 .receipt-row .val.warn { color: var(--good); }
+  .v5 .footer { margin-top: 28px; border-top: 2px solid var(--slate); padding-top: 18px; }
+  .v5 .footer .head { font-size: 16px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 12px; }
+  .v5 .footer ol { margin: 0; padding-left: 28px; }
+  .v5 .footer li { font-size: 18px; line-height: 1.6; color: var(--offwhite); }
+  .v5 .footer li b { color: var(--marginal); }
+
+  /* ====================================================== */
+  /* 6. 2×2 CARD GRID                                       */
+  /* ====================================================== */
+  .v6 { padding: 36px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr;
+        gap: 20px; height: 100%; }
+  .v6 .card { background: var(--slate); border-radius: 16px; padding: 26px 30px;
+              display: flex; flex-direction: column; gap: 12px; }
+  .v6 .card .label { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .v6 .card .h { font-size: 64px; font-weight: 800; line-height: 1; }
+  .v6 .card .h.cert { color: var(--green); }
+  .v6 .card .h.head { color: var(--marginal); }
+  .v6 .card .h.wifi { color: var(--strong); }
+  .v6 .card .sub { color: var(--muted); font-size: 17px; line-height: 1.4; margin-top: 2px; }
+  .v6 .card .recs { margin-top: auto; }
+  .v6 .card .recs ul { margin: 0; padding-left: 20px; }
+  .v6 .card .recs li { font-size: 16px; line-height: 1.5; color: var(--offwhite); margin-bottom: 4px; }
+  .v6 .card.recs-card { display: flex; flex-direction: column; }
+  .v6 .card.recs-card h3 { margin: 0; font-size: 22px; }
+
+  /* ====================================================== */
+  /* 7. NARRATIVE SUMMARY                                    */
+  /* ====================================================== */
+  .v7 { padding: 60px 90px; display: flex; flex-direction: column; gap: 30px; height: 100%; }
+  .v7 .header { display: flex; align-items: baseline; gap: 16px; }
+  .v7 .header .tier { color: var(--green); font-weight: 800; font-size: 56px; line-height: 1; }
+  .v7 .header .label { color: var(--muted); font-size: 22px; }
+  .v7 .narrative { font-size: 30px; line-height: 1.5; color: var(--offwhite); }
+  .v7 .narrative b { color: var(--green); }
+  .v7 .narrative i { color: var(--marginal); font-style: normal; }
+  .v7 .strip { display: flex; gap: 50px; margin-top: auto; padding-top: 30px; border-top: 1px solid var(--slate); }
+  .v7 .strip .stat { display: flex; flex-direction: column; gap: 4px; }
+  .v7 .strip .stat .k { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .v7 .strip .stat .v { font-size: 26px; font-weight: 700; }
+
+  /* ====================================================== */
+  /* 8. DASHBOARD WITH SPARKLINES                            */
+  /* ====================================================== */
+  .v8 { padding: 36px; display: flex; flex-direction: column; gap: 18px; }
+  .v8 .topbar { display: flex; align-items: center; gap: 14px; padding-bottom: 12px; border-bottom: 1px solid var(--slate); }
+  .v8 .topbar .tier { font-size: 38px; font-weight: 800; color: var(--green); }
+  .v8 .topbar .label { color: var(--muted); font-size: 16px; }
+  .v8 .topbar .right { margin-left: auto; color: var(--muted); font-size: 14px; }
+  .v8 .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 16px; flex: 1; }
+  .v8 .panel { background: var(--slate); border-radius: 12px; padding: 18px 22px;
+               display: flex; flex-direction: column; gap: 8px; }
+  .v8 .panel .k { font-size: 13px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .v8 .panel .v { font-size: 32px; font-weight: 700; }
+  .v8 .panel .v.warn { color: var(--marginal); }
+  .v8 .panel .delta { font-size: 13px; color: var(--green); }
+  .v8 .panel .delta.down { color: var(--marginal); }
+  .v8 .panel .spark { margin-top: auto; height: 38px; }
+
+  /* ====================================================== */
+  /* 9. INSTALL CHECKLIST                                   */
+  /* ====================================================== */
+  .v9 { padding: 50px 90px; display: flex; flex-direction: column; gap: 12px; }
+  .v9 h1 { margin: 0; font-size: 32px; font-weight: 700; }
+  .v9 .header-row { display: flex; align-items: baseline; gap: 16px; padding-bottom: 18px; border-bottom: 1px solid var(--slate); margin-bottom: 12px; }
+  .v9 .header-row .tier { font-weight: 800; color: var(--green); font-size: 34px; }
+  .v9 .header-row .label { color: var(--muted); font-size: 18px; }
+  .v9 .step { display: flex; gap: 18px; padding: 14px 0; align-items: center; }
+  .v9 .step .check { width: 40px; height: 40px; flex-shrink: 0;
+                     border-radius: 22px; display: flex; align-items: center; justify-content: center;
+                     font-weight: 700; font-size: 18px; }
+  .v9 .step .check.ok { background: var(--green); color: #fff; }
+  .v9 .step .check.warn { background: var(--marginal); color: #fff; }
+  .v9 .step .check.muted { background: var(--slate); color: var(--muted); }
+  .v9 .step .body { display: flex; gap: 14px; align-items: baseline; }
+  .v9 .step .name { font-size: 20px; font-weight: 600; min-width: 220px; }
+  .v9 .step .detail { font-size: 18px; color: var(--muted); }
+  .v9 .step .detail.warn { color: var(--marginal); }
+
+  /* ====================================================== */
+  /* 10. TWO-COLUMN: CERT / ACTION                          */
+  /* ====================================================== */
+  .v10 { padding: 36px 40px; display: grid; grid-template-columns: 1fr 1fr; gap: 32px; height: 100%; }
+  .v10 .left { display: flex; flex-direction: column; }
+  .v10 .left h1 { margin: 0; font-size: 24px; font-weight: 600; color: var(--muted); }
+  .v10 .left .tier { font-size: 92px; font-weight: 800; color: var(--green); line-height: 1.05;
+                     margin-top: 6px; }
+  .v10 .left .server { color: var(--muted); font-size: 17px; margin-top: 8px; margin-bottom: 30px; }
+  .v10 .ladder { display: flex; flex-direction: column; gap: 4px; }
+  .v10 .ladder .rung { display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+                       background: var(--slate); border-radius: 10px; }
+  .v10 .ladder .rung.achieved { background: rgba(34,197,94,0.18); border: 1px solid var(--green); }
+  .v10 .ladder .rung.next { background: var(--slate); border: 1px dashed var(--outline); }
+  .v10 .ladder .rung .nm { font-size: 18px; font-weight: 600; flex: 1; }
+  .v10 .ladder .rung .ck { color: var(--green); font-weight: 700; }
+  .v10 .ladder .rung .gap { color: var(--muted); font-size: 14px; }
+  .v10 .left .head { margin-top: 22px; }
+  .v10 .left .head .lbl { font-size: 14px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; }
+  .v10 .left .head .pct { font-size: 22px; font-weight: 700; margin: 6px 0 8px; color: var(--marginal); }
+  .v10 .right h2 { margin: 0 0 14px; font-size: 18px; color: var(--muted);
+                   text-transform: uppercase; letter-spacing: 1px; }
+  .v10 .rec { background: var(--slate); border-radius: 12px; padding: 16px 18px; margin-bottom: 10px;
+              display: flex; gap: 14px; align-items: flex-start; }
+  .v10 .rec .icon { width: 36px; height: 36px; flex-shrink: 0; background: var(--marginal); color: #fff;
+                    border-radius: 18px; display: flex; align-items: center; justify-content: center;
+                    font-weight: 700; }
+  .v10 .rec .icon.info { background: var(--strong); color: #1a1a1a; }
+  .v10 .rec .body .t { font-size: 17px; font-weight: 600; }
+  .v10 .rec .body .d { font-size: 14px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+  .v10 .right .footer { margin-top: auto; padding-top: 20px; border-top: 1px solid var(--slate);
+                        display: flex; gap: 22px; font-size: 13px; color: var(--muted); }
+  .v10 .right .footer .stat b { color: var(--offwhite); font-weight: 700; }
+</style>
+</head>
+<body>
+
+<header class="page">
+  <h1>Results-screen explorations · ten directions</h1>
+  <p>
+    Each mock is a 1280×720 TV-sized canvas using realistic numbers from the lab STB run:
+    4K HDR network certified, 5% headroom (top tier with tight margin), Wi-Fi 6 strong,
+    bufferbloat detected, plugged into a 1080p TV. Pick one to refine.
+  </p>
+</header>
+
+<!-- ============================================================ -->
+<!-- 1. VERDICT-FIRST HERO                                        -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">01</span> Verdict-first hero</h2>
+  <p class="notes">
+    Maximalist on the answer ("did I pass?"), minimalist on data. The pass/fail headline
+    is the whole screen. Sacrifices: zero room for context — recommendations are reduced
+    to one tiny chip, metrics are off-screen entirely.
+  </p>
+  <div class="mock v1">
+    <div class="label">NETWORK CERTIFICATION</div>
+    <div class="verdict-icon">✓</div>
+    <div class="tier">4K HDR</div>
+    <div class="sub">Tested against Hotwire Fision Atlanta · Force Broadband · Fiber</div>
+    <div class="chips">
+      <div class="chip">
+        <div class="k">Headroom</div>
+        <div class="v">5% margin</div>
+      </div>
+      <div class="chip">
+        <div class="k">Wi-Fi link</div>
+        <div class="v">Strong · -60 dBm</div>
+      </div>
+      <div class="chip">
+        <div class="k">Action</div>
+        <div class="v warn">⚠ 1 fix</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 2. STATUS & ACTIONS                                          -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">02</span> Status &amp; actions</h2>
+  <p class="notes">
+    Top half: pass/fail + headroom. Bottom half: a numbered to-do list of recommendations
+    the tech can read top-down. Reads like an install task list. Sacrifices: deep
+    metrics are folded into the items, not shown numerically.
+  </p>
+  <div class="mock v2">
+    <div class="top">
+      <div class="verdict">
+        <div class="label">NETWORK CERTIFIED FOR</div>
+        <div class="tier">4K HDR</div>
+        <div class="sub">Hotwire Fision Atlanta · Force Broadband · Fiber</div>
+      </div>
+      <div class="head-card">
+        <div class="pill-row"><span class="pill marginal">Top tier · tight</span></div>
+        <div class="pct">5%</div>
+        <div class="label">Headroom margin</div>
+      </div>
+    </div>
+    <hr/>
+    <div class="actions">
+      <h3>Recommendations to improve streaming experience</h3>
+      <div class="action">
+        <div class="num">1</div>
+        <div class="body">
+          <div class="t">Bufferbloat detected — latency jumps 47 → 178 ms under load</div>
+          <div class="d">Consider enabling Smart Queue Management (SQM) on the router. This is the most likely cause if the customer reports buffering during peak hours.</div>
+        </div>
+      </div>
+      <div class="action">
+        <div class="num">2</div>
+        <div class="body">
+          <div class="t">Connect a 4K HDR display to use the certified top tier</div>
+          <div class="d">This TV reports 1080p only. The connection can carry 4K HDR but the display caps at HD.</div>
+        </div>
+      </div>
+      <div class="action">
+        <div class="num">3</div>
+        <div class="body">
+          <div class="t">HDMI link is HDCP-1.x — premium 4K studio content blocked</div>
+          <div class="d">Customer's TV/AVR doesn't support HDCP 2.2. Required for Netflix UHD, Disney+ 4K.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 3. HEALTH RINGS                                              -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">03</span> Health rings (Apple Health-inspired)</h2>
+  <p class="notes">
+    Three filled rings — Network / Wi-Fi / Headroom — read at a glance.
+    Recommendations live in a clean column on the right. Sacrifices: ring legibility on a TV
+    at distance is unproven; numbers are smaller than other concepts.
+  </p>
+  <div class="mock v3">
+    <div class="rings">
+      <div class="ring-item">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="44" stroke="#2D3A4D" stroke-width="11" fill="none"/>
+            <circle cx="50" cy="50" r="44" stroke="#22C55E" stroke-width="11" fill="none"
+                    stroke-dasharray="276" stroke-dashoffset="0" stroke-linecap="round"/>
+          </svg>
+          <div class="label-pct"><div class="pct">100%</div><div class="lbl">Network</div></div>
+        </div>
+        <div class="copy">
+          <div class="t">Network — 4K HDR certified</div>
+          <div class="d">Throughput, latency, jitter all clear the top tier with margin.</div>
+        </div>
+      </div>
+      <div class="ring-item">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="44" stroke="#2D3A4D" stroke-width="11" fill="none"/>
+            <circle cx="50" cy="50" r="44" stroke="#84CC16" stroke-width="11" fill="none"
+                    stroke-dasharray="276" stroke-dashoffset="55" stroke-linecap="round"/>
+          </svg>
+          <div class="label-pct"><div class="pct">80%</div><div class="lbl">Wi-Fi</div></div>
+        </div>
+        <div class="copy">
+          <div class="t">Wi-Fi link — Strong</div>
+          <div class="d">-60 dBm on 5 GHz · Wi-Fi 6 (802.11ax) · 720/1200 Mbps negotiated.</div>
+        </div>
+      </div>
+      <div class="ring-item">
+        <div class="ring">
+          <svg viewBox="0 0 100 100">
+            <circle cx="50" cy="50" r="44" stroke="#2D3A4D" stroke-width="11" fill="none"/>
+            <circle cx="50" cy="50" r="44" stroke="#F97316" stroke-width="11" fill="none"
+                    stroke-dasharray="276" stroke-dashoffset="262" stroke-linecap="round"/>
+          </svg>
+          <div class="label-pct"><div class="pct">5%</div><div class="lbl">Headroom</div></div>
+        </div>
+        <div class="copy">
+          <div class="t">Top-tier margin — tight</div>
+          <div class="d">Just barely above the 4K HDR floor on latency. A neighbor torrenting could push it back to 4K (still good, but not premium).</div>
+        </div>
+      </div>
+    </div>
+    <div class="right">
+      <h2>4K HDR ✓</h2>
+      <div class="server">Hotwire Fision Atlanta · Force Broadband · Fiber</div>
+      <h3>Recommendations</h3>
+      <ul class="recs">
+        <li><b>⚠</b> Enable SQM on router — bufferbloat under load</li>
+        <li><b>⚠</b> Connect 4K HDR display to use top tier</li>
+        <li><b>⚠</b> HDMI HDCP 1.x — blocks premium 4K studio content</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 4. STOPLIGHT                                                 -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">04</span> Stoplight</h2>
+  <p class="notes">
+    One giant traffic-light disc; in this case yellow because of the bufferbloat / display
+    caveats. Big sentence verdict beneath. Sub-status row at the bottom. Sacrifices: very
+    little nuance — borderline cases all read the same color.
+  </p>
+  <div class="mock v4">
+    <div class="light"></div>
+    <div class="verdict"><span class="tier">4K HDR</span> certified — with caveats</div>
+    <div class="narration">Network supports the top streaming tier, but the connected display + HDMI link can't deliver it, and the connection shows bufferbloat under load.</div>
+    <div class="row">
+      <div class="item"><div class="icon ok">✓</div><div class="name">Network</div><div class="val">4K HDR</div></div>
+      <div class="item"><div class="icon warn">⚠</div><div class="name">Wi-Fi link</div><div class="val">Strong</div></div>
+      <div class="item"><div class="icon warn">⚠</div><div class="name">Display</div><div class="val">1080p only</div></div>
+      <div class="item"><div class="icon warn">⚠</div><div class="name">Bufferbloat</div><div class="val">Detected</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 5. ITEMIZED RECEIPT                                          -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">05</span> Itemized receipt</h2>
+  <p class="notes">
+    Pure data, no chrome. Reads like a fast-food receipt — line per line. Maximizes
+    scan-ability and density. Sacrifices: zero visual hierarchy, no drama, doesn't feel
+    "branded".
+  </p>
+  <div class="mock v5">
+    <h1>FISIONTV+ NETWORK CERTIFICATION</h1>
+    <div class="receipt-row"><span class="key">NETWORK</span><span class="dots"></span><span class="val green">4K HDR ✓</span></div>
+    <div class="receipt-row"><span class="key">SERVER</span><span class="dots"></span><span class="val">ATLANTA, GA</span></div>
+    <div class="receipt-row"><span class="key">ISP</span><span class="dots"></span><span class="val">FORCE BROADBAND · FIBER</span></div>
+    <div class="receipt-row"><span class="key">HEADROOM</span><span class="dots"></span><span class="val warn">5% MARGIN</span></div>
+    <div class="receipt-row"><span class="key">WI-FI LINK</span><span class="dots"></span><span class="val green">STRONG</span></div>
+    <div class="receipt-row"><span class="key">RSSI</span><span class="dots"></span><span class="val">-60 dBm · 5 GHz · 11ax</span></div>
+    <div class="receipt-row"><span class="key">DISPLAY</span><span class="dots"></span><span class="val warn">1080p (TV LIMIT)</span></div>
+    <div class="receipt-row"><span class="key">BUFFERBLOAT</span><span class="dots"></span><span class="val warn">+131 ms UNDER LOAD</span></div>
+    <div class="footer">
+      <div class="head">RECOMMENDATIONS</div>
+      <ol>
+        <li><b>⚠</b> Enable SQM/QoS on router to eliminate bufferbloat</li>
+        <li><b>⚠</b> Connect a 4K HDR display to use the certified tier</li>
+        <li><b>⚠</b> HDCP 1.x link blocks premium 4K studio content</li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 6. 2×2 CARD GRID                                             -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">06</span> 2×2 card grid</h2>
+  <p class="notes">
+    Equal-weight quadrants: Cert / Headroom / Wi-Fi / Recommendations. Each is
+    self-contained so the eye can land anywhere and get a complete picture.
+    Sacrifices: equal visual weight means the cert verdict doesn't dominate.
+  </p>
+  <div class="mock v6">
+    <div class="card">
+      <div class="label">CERTIFIED FOR</div>
+      <div class="h cert">4K HDR</div>
+      <div class="sub">Hotwire Fision Atlanta · Force Broadband · Fiber · 140.235.42.67</div>
+    </div>
+    <div class="card">
+      <div class="label">HEADROOM</div>
+      <div class="h head">5%</div>
+      <div class="progress-bar"><div class="fill marginal" style="width: 5%"></div></div>
+      <div class="sub">Top tier with tight margin · closest to floor: Latency</div>
+    </div>
+    <div class="card">
+      <div class="label">WI-FI LINK</div>
+      <div class="h wifi">Strong</div>
+      <div class="sub">-60 dBm on 5 GHz · Wi-Fi 6 (802.11ax) · 720/1200 Mbps. Healthy link with margin.</div>
+    </div>
+    <div class="card recs-card">
+      <div class="label">TOP RECOMMENDATIONS</div>
+      <div class="recs">
+        <ul>
+          <li><b style="color: var(--marginal)">⚠</b> Bufferbloat detected — enable SQM/QoS on router</li>
+          <li><b style="color: var(--marginal)">⚠</b> Connect 4K HDR display to use top tier</li>
+          <li><b style="color: var(--marginal)">⚠</b> HDCP-1.x link blocks premium 4K content</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 7. NARRATIVE SUMMARY                                         -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">07</span> Narrative summary</h2>
+  <p class="notes">
+    Conversational prose at the top — what a tech might say to a customer at the door.
+    Below, a thin metric strip for tech-leaning data. Sacrifices: parsing prose is slower
+    than scanning numbers; vulnerable to copywriting that ages badly.
+  </p>
+  <div class="mock v7">
+    <div class="header">
+      <div class="tier">4K HDR</div>
+      <div class="label">network certified · Hotwire Fision Atlanta</div>
+    </div>
+    <p class="narrative">
+      Your connection can stream <b>4K HDR</b> over the FisionTV+ service. The Wi-Fi link is
+      <b>strong</b>. We noticed <i>bufferbloat under load</i> — latency jumps from 47 ms idle
+      to 178 ms when the connection is busy, which can cause occasional streaming hiccups.
+      Enabling SQM/QoS on the router would eliminate it. The connected TV reports 1080p only,
+      so 4K HDR streaming requires upgrading the display.
+    </p>
+    <div class="strip">
+      <div class="stat"><div class="k">Download</div><div class="v">555 Mbps</div></div>
+      <div class="stat"><div class="k">Upload</div><div class="v">382 Mbps</div></div>
+      <div class="stat"><div class="k">Idle latency</div><div class="v">47 ms</div></div>
+      <div class="stat"><div class="k">Loaded</div><div class="v" style="color: var(--marginal)">178 ms</div></div>
+      <div class="stat"><div class="k">Wi-Fi RSSI</div><div class="v">-60 dBm</div></div>
+      <div class="stat"><div class="k">DNS</div><div class="v">14 ms</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 8. DASHBOARD WITH SPARKLINES                                 -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">08</span> Dashboard with sparklines</h2>
+  <p class="notes">
+    Tech-leaning. Each metric panel includes a small inline trend from the last few runs.
+    Useful when re-certifying — answers "is this getting worse?" Sacrifices: dense, requires
+    more reading; less suited to first-time installs without history.
+  </p>
+  <div class="mock v8">
+    <div class="topbar">
+      <div class="tier">4K HDR</div>
+      <div class="label">Hotwire Fision Atlanta · Force Broadband · last cert 2 days ago</div>
+      <div class="right">May 8, 2026 · 11:17 · cert e733bb17</div>
+    </div>
+    <div class="grid">
+      <div class="panel">
+        <div class="k">DOWNLOAD</div>
+        <div class="v">555 Mbps</div>
+        <div class="delta">↑ 4% vs last run</div>
+        <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline points="0,32 40,28 80,30 120,25 160,18 200,12" fill="none" stroke="#22C55E" stroke-width="2"/></svg>
+      </div>
+      <div class="panel">
+        <div class="k">UPLOAD</div>
+        <div class="v">382 Mbps</div>
+        <div class="delta">↑ 12% vs last run</div>
+        <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline points="0,28 40,30 80,22 120,24 160,18 200,8" fill="none" stroke="#22C55E" stroke-width="2"/></svg>
+      </div>
+      <div class="panel">
+        <div class="k">LATENCY (IDLE / LOADED)</div>
+        <div class="v">47 / <span style="color: var(--marginal)">178</span> ms</div>
+        <div class="delta down">⚠ bufferbloat detected</div>
+        <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline points="0,30 40,32 80,28 120,30 160,29 200,28" fill="none" stroke="#F97316" stroke-width="2"/></svg>
+      </div>
+      <div class="panel">
+        <div class="k">WI-FI RSSI</div>
+        <div class="v">-60 dBm</div>
+        <div class="delta">stable</div>
+        <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline points="0,18 40,16 80,18 120,17 160,18 200,18" fill="none" stroke="#84CC16" stroke-width="2"/></svg>
+      </div>
+      <div class="panel">
+        <div class="k">PLAYBACK</div>
+        <div class="v">1080p</div>
+        <div class="delta down">capped by TV</div>
+        <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline points="0,20 40,20 80,20 120,20 160,20 200,20" fill="none" stroke="#84CC16" stroke-width="2"/></svg>
+      </div>
+      <div class="panel">
+        <div class="k">DNS</div>
+        <div class="v">14 ms</div>
+        <div class="delta">↓ 9% vs last</div>
+        <svg class="spark" viewBox="0 0 200 40" preserveAspectRatio="none"><polyline points="0,18 40,22 80,17 120,15 160,14 200,12" fill="none" stroke="#22C55E" stroke-width="2"/></svg>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 9. INSTALL CHECKLIST                                         -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">09</span> Install checklist</h2>
+  <p class="notes">
+    Numbered, checkbox-style. Mirrors a tech's clipboard. Each line answers one question.
+    Action items are mixed in with checks. Sacrifices: linear sequence implies an order
+    that doesn't really exist; "Network ✓" feels like step 1 of 5 even though it's not.
+  </p>
+  <div class="mock v9">
+    <div class="header-row">
+      <h1>Install certification</h1>
+      <div class="tier">4K HDR</div>
+      <div class="label">tested 11:17 against Hotwire Fision Atlanta</div>
+    </div>
+    <div class="step"><div class="check ok">✓</div><div class="body"><div class="name">Network speed</div><div class="detail">555 Mbps down · 382 Mbps up — clears 4K HDR floor</div></div></div>
+    <div class="step"><div class="check ok">✓</div><div class="body"><div class="name">Latency &amp; jitter</div><div class="detail">47 ms idle, 50 ms P95, 0% loss — within all thresholds</div></div></div>
+    <div class="step"><div class="check warn">!</div><div class="body"><div class="name">Bufferbloat</div><div class="detail warn">Loaded latency 178 ms (DL) / 81 ms (UL) — recommend SQM on router</div></div></div>
+    <div class="step"><div class="check ok">✓</div><div class="body"><div class="name">Wi-Fi link</div><div class="detail">-60 dBm on 5 GHz · Wi-Fi 6 · 720/1200 Mbps · Strong</div></div></div>
+    <div class="step"><div class="check warn">!</div><div class="body"><div class="name">Display capability</div><div class="detail warn">1080p TV — connect 4K HDR display to use the top tier</div></div></div>
+    <div class="step"><div class="check warn">!</div><div class="body"><div class="name">HDMI link</div><div class="detail warn">HDCP 1.x negotiated — premium 4K studio content blocked</div></div></div>
+    <div class="step"><div class="check ok">✓</div><div class="body"><div class="name">DRM</div><div class="detail">Widevine L1 — premium 4K supported by STB</div></div></div>
+    <div class="step"><div class="check ok">✓</div><div class="body"><div class="name">DNS resolution</div><div class="detail">14 ms median, 0% failure</div></div></div>
+    <div class="step"><div class="check ok">✓</div><div class="body"><div class="name">Real video playback</div><div class="detail">1080p · 9.9 Mbps peak · 0 rebuffers</div></div></div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<!-- 10. TWO-COLUMN: CERT / ACTION                                -->
+<!-- ============================================================ -->
+<section class="concept">
+  <h2><span class="num">10</span> Two-column: Cert / Action</h2>
+  <p class="notes">
+    Left: cert verdict + a visual tier ladder showing where the connection landed.
+    Right: a focused action panel with the top three things the tech can act on. Footer
+    strip: small data row. Balanced between "what" (left) and "what to do" (right).
+  </p>
+  <div class="mock v10">
+    <div class="left">
+      <h1>Network certified for</h1>
+      <div class="tier">4K HDR</div>
+      <div class="server">Hotwire Fision Atlanta · Force Broadband · Fiber</div>
+      <div class="ladder">
+        <div class="rung"><span class="ck">✓</span><span class="nm">SD</span><span class="gap">comfortably above</span></div>
+        <div class="rung"><span class="ck">✓</span><span class="nm">HD</span><span class="gap">comfortably above</span></div>
+        <div class="rung"><span class="ck">✓</span><span class="nm">4K</span><span class="gap">comfortably above</span></div>
+        <div class="rung achieved"><span class="ck">✓</span><span class="nm">4K HDR — achieved</span><span class="gap">5% margin within tier</span></div>
+      </div>
+      <div class="head">
+        <div class="lbl">Top-tier headroom</div>
+        <div class="pct">5% — tight margin</div>
+        <div class="progress-bar"><div class="fill marginal" style="width: 5%"></div></div>
+      </div>
+    </div>
+    <div class="right">
+      <h2>Recommendations</h2>
+      <div class="rec">
+        <div class="icon">!</div>
+        <div class="body">
+          <div class="t">Enable SQM/QoS on router</div>
+          <div class="d">Bufferbloat detected: latency jumps 47 ms → 178 ms under load. Likely cause of streaming hiccups during peak hours.</div>
+        </div>
+      </div>
+      <div class="rec">
+        <div class="icon">!</div>
+        <div class="body">
+          <div class="t">Connect a 4K HDR display</div>
+          <div class="d">This TV reports 1080p only. The connection can carry 4K HDR but the display caps at HD.</div>
+        </div>
+      </div>
+      <div class="rec">
+        <div class="icon">!</div>
+        <div class="body">
+          <div class="t">HDCP-1.x link blocks premium 4K</div>
+          <div class="d">Customer's TV/AVR doesn't support HDCP 2.2. Required for Netflix UHD, Disney+ 4K, etc.</div>
+        </div>
+      </div>
+      <div class="footer">
+        <div class="stat">Down <b>555 Mbps</b></div>
+        <div class="stat">Up <b>382 Mbps</b></div>
+        <div class="stat">Idle <b>47 ms</b></div>
+        <div class="stat">Wi-Fi <b>-60 dBm</b></div>
+        <div class="stat">DNS <b>14 ms</b></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

@@ -46,15 +46,22 @@ class CertificationEngine(
 
     /**
      * Production constructor. Resolves probes and diagnostics from the
-     * Android context. Tests should use the primary constructor with
-     * fakes instead.
+     * Android context and reuses the process-wide OoklaRuntime so the
+     * CA bundle is extracted once at app start rather than per-run.
+     * Tests should use the primary constructor with fakes instead.
      */
-    constructor(context: Context, config: RuntimeConfig) : this(
+    constructor(
+        context: Context,
+        config: RuntimeConfig,
+        ooklaRuntime: OoklaRuntime = OoklaRuntime(context)
+    ) : this(
         config = config,
         probes = DefaultProbeFactory(context, config),
         ookla = { onProgress ->
             OoklaSpeedtestPhase(
-                OoklaSpeedtestRunner(OoklaRuntime(context), config.ooklaConfigUrl)
+                runtime = ooklaRuntime,
+                primaryConfigUrl = config.ooklaConfigUrl,
+                fallbackConfigUrl = config.ooklaConfigUrlFallback
             ).run(onProgress)
         },
         collectDiagnostics = { NetworkDiagnosticsCollector.collect(context) }
@@ -100,6 +107,16 @@ class CertificationEngine(
 
         try {
             val diagnostics = collectDiagnostics()
+
+            // Pre-flight: if there's no validated network, fail fast with
+            // a clear message instead of plowing through 60s of DNS +
+            // Ookla timeouts. validated == false means the OS has the
+            // interface up but hasn't confirmed internet connectivity.
+            if (diagnostics.network.transport.name == "OTHER" || !diagnostics.network.validated) {
+                Log.w(TAG, "pre-flight failed: transport=${diagnostics.network.transport} validated=${diagnostics.network.validated}")
+                send(EngineEvent.Failed(TestStep.DNS, "No working internet connection detected. Check the STB's network and try again."))
+                return@channelFlow
+            }
 
             val dns = phase(TestStep.DNS) { progress -> probes.dnsProbe().run(progress) }
 

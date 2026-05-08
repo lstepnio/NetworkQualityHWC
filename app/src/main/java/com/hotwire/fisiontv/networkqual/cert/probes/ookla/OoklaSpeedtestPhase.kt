@@ -20,22 +20,57 @@ import kotlinx.coroutines.flow.collect
  * engine routes to its `phase()` failure handler.
  */
 class OoklaSpeedtestPhase(
-    private val runner: OoklaSpeedtestRunner
+    private val runtime: OoklaRuntime,
+    private val primaryConfigUrl: String,
+    /**
+     * Optional fallback URL the phase retries against if the primary URL
+     * fails before emitting a Started event (the typical TLS / config-
+     * fetch failure mode). Null disables fallback.
+     */
+    private val fallbackConfigUrl: String? = null,
+    private val runnerFactory: (String) -> OoklaSpeedtestRunner = { url ->
+        OoklaSpeedtestRunner(runtime, url)
+    }
 ) {
     suspend fun run(onProgress: (Float) -> Unit): OoklaSpeedtestOutcome {
+        // Try primary first. If it fails before emitting a Started event,
+        // the failure is almost always config-fetch (TLS / DNS / network
+        // /unreachable) — retry on the fallback URL. Failures *after*
+        // Started are mid-test and aren't retried (would distort metrics).
+        val primary = runOnce(primaryConfigUrl, onProgress)
+        if (primary.outcome != null) return primary.outcome
+        if (primary.startedBeforeFailure || fallbackConfigUrl == null) {
+            throw OoklaFailure(primary.failure ?: "ookla speedtest failed")
+        }
+        Log.w(TAG, "primary URL failed before start; retrying against fallback: $fallbackConfigUrl")
+        // Reset visible progress so the bar restarts cleanly.
+        onProgress(0f)
+        val secondary = runOnce(fallbackConfigUrl, onProgress)
+        return secondary.outcome ?: throw OoklaFailure(secondary.failure ?: "ookla speedtest failed (fallback)")
+    }
+
+    private data class Attempt(
+        val outcome: OoklaSpeedtestOutcome?,
+        val failure: String?,
+        val startedBeforeFailure: Boolean
+    )
+
+    private suspend fun runOnce(configUrl: String, onProgress: (Float) -> Unit): Attempt {
         var server: OoklaServerSelection? = null
         var isp: String? = null
         var publicIp: String? = null
         var lastResult: OoklaEvent.Result? = null
         var failure: String? = null
+        var started = false
 
-        runner.run().collect { event ->
+        runnerFactory(configUrl).run().collect { event ->
             when (event) {
                 is OoklaEvent.Started -> {
+                    started = true
                     server = event.server
                     isp = event.isp
                     publicIp = event.publicIp
-                    Log.i(TAG, "started: ${event.server.name} ${event.server.location} (${event.server.id})")
+                    Log.i(TAG, "started: ${event.server.name} ${event.server.location} (${event.server.id}) via $configUrl")
                 }
                 is OoklaEvent.PingTick ->
                     onProgress((event.progress * PING_FRAC).coerceIn(0f, 1f))
@@ -49,31 +84,37 @@ class OoklaSpeedtestPhase(
         }
         onProgress(1f)
 
-        failure?.let { throw OoklaFailure(it) }
-        val resolvedServer = server ?: throw OoklaFailure("no testStart event")
-        val resolved = lastResult ?: throw OoklaFailure("no result event")
+        if (failure != null) {
+            return Attempt(null, failure, started)
+        }
+        val resolvedServer = server ?: return Attempt(null, "no testStart event", started)
+        val resolved = lastResult ?: return Attempt(null, "no result event", started)
 
-        return OoklaSpeedtestOutcome(
-            server = OoklaServer(
-                id = "ookla-${resolvedServer.id}",
-                name = "${resolvedServer.name} (${resolvedServer.location})",
-                host = resolvedServer.host,
-                port = resolvedServer.port,
-                secure = false // Ookla server traffic is over the published port; secure flag is informational
+        return Attempt(
+            outcome = OoklaSpeedtestOutcome(
+                server = OoklaServer(
+                    id = "ookla-${resolvedServer.id}",
+                    name = "${resolvedServer.name} (${resolvedServer.location})",
+                    host = resolvedServer.host,
+                    port = resolvedServer.port,
+                    secure = false
+                ),
+                serverIp = resolvedServer.ip,
+                isp = isp ?: "",
+                publicIp = publicIp ?: "",
+                latency = toLatencyResult(resolved),
+                download = toThroughputResult(
+                    bytesPerSec = resolved.downloadBytesPerSec,
+                    durationMs = resolved.downloadElapsedMs
+                ),
+                upload = toThroughputResult(
+                    bytesPerSec = resolved.uploadBytesPerSec,
+                    durationMs = resolved.uploadElapsedMs
+                ),
+                packetLossPct = resolved.packetLossPct
             ),
-            serverIp = resolvedServer.ip,
-            isp = isp ?: "",
-            publicIp = publicIp ?: "",
-            latency = toLatencyResult(resolved),
-            download = toThroughputResult(
-                bytesPerSec = resolved.downloadBytesPerSec,
-                durationMs = resolved.downloadElapsedMs
-            ),
-            upload = toThroughputResult(
-                bytesPerSec = resolved.uploadBytesPerSec,
-                durationMs = resolved.uploadElapsedMs
-            ),
-            packetLossPct = resolved.packetLossPct
+            failure = null,
+            startedBeforeFailure = true
         )
     }
 

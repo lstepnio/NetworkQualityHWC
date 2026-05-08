@@ -1,48 +1,15 @@
 package com.hotwire.fisiontv.networkqual.cert.probes
 
-import com.hotwire.fisiontv.networkqual.config.OoklaServer
-
 /**
- * Per-phase probe interfaces. The certification engine depends on these,
- * never on concrete implementations. Today these are backed by hand-rolled
- * OkHttp / TCP / Media3 code in this same package; dropping in the Ookla
- * SDK later means writing new implementations and pointing
- * [ProbeFactory] at them.
+ * Per-phase probe interfaces the engine still consumes.
  *
- * Every implementation must:
- *   - be pure with respect to its config (no globals, no singletons besides
- *     the platform services it inherently needs)
- *   - clean up resources before returning (no leaked sockets / players)
- *   - throw on hard failure rather than returning a sentinel; the engine
- *     catches and surfaces the failure as `EngineEvent.Failed`.
+ * Server selection + ping + download + upload now run as one Ookla
+ * speedtest (see ookla/OoklaSpeedtestPhase). DNS and Playback remain
+ * standalone phases with their own probe interfaces.
  */
-
-interface ServerSelector {
-    suspend fun pick(): Selection
-
-    data class Selection(
-        val selected: OoklaServer,
-        val selectedRttMs: Long,
-        val probes: List<ProbeRtt>
-    )
-
-    data class ProbeRtt(val server: OoklaServer, val rttMs: Long, val ok: Boolean)
-}
 
 interface DnsProbe {
     suspend fun run(onProgress: (Float) -> Unit = {}): DnsResult
-}
-
-interface LatencyProbe {
-    suspend fun run(host: String, port: Int, onProgress: (Float) -> Unit = {}): LatencyResult
-}
-
-interface DownloadProbe {
-    suspend fun run(server: OoklaServer, onProgress: (Float) -> Unit = {}): ThroughputResult
-}
-
-interface UploadProbe {
-    suspend fun run(server: OoklaServer, onProgress: (Float) -> Unit = {}): ThroughputResult
 }
 
 interface PlaybackProbe {

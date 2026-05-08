@@ -61,7 +61,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // (once the cert-config API is wired) takes effect on the next
         // click of "Run again" without an app restart.
         val config = configProvider.current()
-        val engine = CertificationEngine(getApplication(), config)
+        val engine = CertificationEngine(getApplication(), config, container.ooklaRuntime)
         runJob = viewModelScope.launch {
             _state.value = UiState.Running(TestStep.DNS, 0f, 0f)
             engine.run().collect { event ->

@@ -31,7 +31,15 @@ data class RuntimeConfig(
      * the Ookla binary using this URL. Should be HTTPS in production with
      * the bundled CA cert; HTTP is acceptable for lab/dev only.
      */
-    val ooklaConfigUrl: String
+    val ooklaConfigUrl: String,
+    /**
+     * Optional fallback URL retried automatically when [ooklaConfigUrl]
+     * fails before the test starts (TLS handshake / config-fetch
+     * failures). Production should use HTTP variant of the same hosted
+     * config so a CA bundle issue doesn't black out the cert. Set to
+     * null to disable fallback.
+     */
+    val ooklaConfigUrlFallback: String? = null
 ) {
     init {
         require(schemaVersion > 0) { "schemaVersion must be positive" }

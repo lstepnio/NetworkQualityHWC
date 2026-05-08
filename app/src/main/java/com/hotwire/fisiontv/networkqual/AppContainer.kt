@@ -2,6 +2,7 @@ package com.hotwire.fisiontv.networkqual
 
 import android.content.Context
 import android.util.Log
+import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaRuntime
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigProvider
 import com.hotwire.fisiontv.networkqual.data.AppDatabase
 import com.hotwire.fisiontv.networkqual.diagnostics.DeviceIdentityCollector
@@ -36,6 +37,14 @@ class AppContainer(context: Context) {
 
     val publishQueue: PublishQueue = PublishQueue(database.pendingPublishDao())
 
+    /**
+     * Single OoklaRuntime instance for the process. Created lazily and
+     * extracts the CA bundle off the main thread on first access — so
+     * the FisionApp.onCreate path doesn't pay the I/O cost. The runtime
+     * itself is cheap to hold past app lifetime; it just resolves paths.
+     */
+    val ooklaRuntime: OoklaRuntime by lazy { OoklaRuntime(applicationContext) }
+
     private val certConfigClient: CertConfigClient = OkHttpCertConfigClient(
         endpoint = BuildConfig.CERT_CONFIG_URL,
         authProvider = NoAuthProvider,
@@ -57,6 +66,11 @@ class AppContainer(context: Context) {
                 is FetchOutcome.Error -> Log.w(TAG, "cert-config fetch failed, using bundled: ${outcome.cause}")
             }
         }
+        // Eagerly extract the Ookla CA bundle off the main thread. By
+        // the time the user clicks "Run certification" the bundle is
+        // already on disk and the first speedtest doesn't pay the
+        // ~10 ms extraction cost.
+        refreshScope.launch { ooklaRuntime.binaryPath /* triggers extraction via lazy */ }
     }
 
     companion object {

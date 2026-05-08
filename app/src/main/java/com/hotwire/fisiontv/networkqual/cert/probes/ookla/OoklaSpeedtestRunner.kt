@@ -8,7 +8,9 @@ import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.flowOn
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.File
 import java.io.InputStreamReader
+import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
 
 /**
@@ -25,10 +27,27 @@ import kotlin.concurrent.thread
  */
 class OoklaSpeedtestRunner(
     private val runtime: OoklaRuntime,
-    private val configUrl: String
+    private val configUrl: String,
+    /**
+     * Hard ceiling for one Ookla execution — ping + download + upload
+     * usually finish in ~50 s; this kills a hung subprocess at 2 minutes
+     * so a frozen test doesn't strand the whole certification.
+     */
+    private val timeoutSec: Long = 120
 ) {
 
     fun run(): Flow<OoklaEvent> = callbackFlow {
+        // Defensive: fail fast if the binary or CA bundle didn't extract
+        // cleanly. Either case is unrecoverable without a reinstall.
+        if (!File(runtime.binaryPath).canExecute()) {
+            trySend(OoklaEvent.Failed("ookla binary missing or not executable at ${runtime.binaryPath}"))
+            close(); return@callbackFlow
+        }
+        if (!File(runtime.caBundlePath).exists()) {
+            trySend(OoklaEvent.Failed("CA bundle missing at ${runtime.caBundlePath}"))
+            close(); return@callbackFlow
+        }
+
         val process: Process = try {
             ProcessBuilder(
                 runtime.binaryPath,
@@ -38,15 +57,26 @@ class OoklaSpeedtestRunner(
             ).redirectErrorStream(true).start()
         } catch (t: Throwable) {
             trySend(OoklaEvent.Failed("spawn: ${t::class.simpleName}: ${t.message}"))
-            close()
-            return@callbackFlow
+            close(); return@callbackFlow
         }
 
-        // Reader thread keeps stdout from blocking the binary. Each
-        // line is one complete JSON object per the jsonl spec.
+        // Watchdog: if the subprocess outlives [timeoutSec], kill it.
+        // The reader thread will see EOF and emit Failed via exit code.
+        val watchdog = thread(name = "ookla-watchdog", isDaemon = true) {
+            try {
+                if (!process.waitFor(timeoutSec, TimeUnit.SECONDS)) {
+                    Log.w(TAG, "ookla exceeded ${timeoutSec}s timeout; killing")
+                    process.destroyForcibly()
+                }
+            } catch (_: Throwable) { /* no-op; reader handles teardown */ }
+        }
+
+        // Reader thread keeps stdout drained so the binary never blocks
+        // on a full pipe. Each line is one complete JSON object per the
+        // jsonl spec; a partial line at EOF is silently dropped.
         val reader = thread(name = "ookla-stdout", isDaemon = true) {
             try {
-                BufferedReader(InputStreamReader(process.inputStream)).use { br ->
+                BufferedReader(InputStreamReader(process.inputStream), READ_BUFFER_BYTES).use { br ->
                     var line: String?
                     while (br.readLine().also { line = it } != null) {
                         val parsed = parseLine(line!!)
@@ -65,6 +95,7 @@ class OoklaSpeedtestRunner(
         awaitClose {
             try { process.destroy() } catch (_: Throwable) {}
             try { reader.interrupt() } catch (_: Throwable) {}
+            try { watchdog.interrupt() } catch (_: Throwable) {}
         }
     }.flowOn(Dispatchers.IO)
 
@@ -162,5 +193,8 @@ class OoklaSpeedtestRunner(
 
     companion object {
         private const val TAG = "OoklaRunner"
+        // Larger than the BufferedReader default (8 KiB) so the streaming
+        // jsonl events don't bottleneck on syscalls during fast phases.
+        private const val READ_BUFFER_BYTES = 64 * 1024
     }
 }

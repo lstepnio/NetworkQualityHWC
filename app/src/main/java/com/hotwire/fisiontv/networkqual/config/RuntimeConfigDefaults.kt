@@ -74,6 +74,11 @@ object RuntimeConfigDefaults {
         // server selection + ping + download + upload through the bundled
         // ookla binary using this URL. CA bundle ships in assets/cacert.pem
         // so HTTPS works without depending on the device's CA store.
-        ooklaConfigUrl = "https://config.speedtest.net/v1/embed/yl1umix4fygogu8l/config"
+        ooklaConfigUrl = "https://config.speedtest.net/v1/embed/yl1umix4fygogu8l/config",
+        // HTTP fallback. Used only if HTTPS fails before the test starts
+        // (TLS handshake / config-fetch errors — typically a CA-bundle
+        // mismatch on a customer network). Acceptable risk: the URL
+        // returns config metadata, not customer data.
+        ooklaConfigUrlFallback = "http://config.speedtest.net/v1/embed/yl1umix4fygogu8l/config"
     )
 }

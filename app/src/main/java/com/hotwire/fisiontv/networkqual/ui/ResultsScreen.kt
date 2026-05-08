@@ -78,20 +78,10 @@ fun ResultsScreen(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            // HSN is the key a tech writes down on the install ticket so
-            // this run can be matched to the customer account in HWC's
-            // billing / inventory systems. Surfaced raw (not hashed) per
-            // SecOps policy: it's an internal-system identifier that has
-            // to be queryable as-is.
-            result.diagnostics.identity.hsn?.let { hsn ->
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = "STB · $hsn",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onBackground,
-                    fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
-                )
-            }
+            // HSN intentionally not shown on screen. It IS sent raw in
+            // the POST body (see CertificationPayload.identity.hsn) so
+            // the backend dashboard / billing-account linkage works
+            // end-to-end without exposing it to anyone reading the TV.
             Spacer(Modifier.height(20.dp))
             MetricsTable(result)
             Spacer(Modifier.height(28.dp))

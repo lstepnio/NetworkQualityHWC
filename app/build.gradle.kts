@@ -78,6 +78,17 @@ android {
         buildConfig = true
     }
 
+    // Ookla binary is shipped as jniLibs/armeabi-v7a/libookla.so. Modern
+    // AGP keeps .so files compressed inside the APK (linker-mapped, faster
+    // install) but that prevents Runtime.exec() from running them. Legacy
+    // packaging extracts the libs to nativeLibraryDir on install where
+    // they're real files SELinux allows untrusted_app to execute.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
+    }
+
     testOptions {
         unitTests {
             // android.util.Log and other framework stubs throw by default

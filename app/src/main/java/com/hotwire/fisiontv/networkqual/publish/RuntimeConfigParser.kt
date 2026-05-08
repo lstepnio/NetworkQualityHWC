@@ -42,7 +42,8 @@ object RuntimeConfigParser {
             dnsProbeHosts = o.optJSONArray("dnsProbeHosts")?.toStringList() ?: defaults.dnsProbeHosts,
             healthAssessment = defaults.healthAssessment,
             wifiLinkQuality = defaults.wifiLinkQuality,
-            resultsPublishing = parsePublishing(o.optJSONObject("uploadResults"))
+            resultsPublishing = parsePublishing(o.optJSONObject("uploadResults")),
+            ooklaConfigUrl = o.optString("ooklaConfigUrl").ifBlank { defaults.ooklaConfigUrl }
         )
     }
 

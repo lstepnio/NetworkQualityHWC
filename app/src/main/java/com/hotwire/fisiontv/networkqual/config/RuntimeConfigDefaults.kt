@@ -68,6 +68,12 @@ object RuntimeConfigDefaults {
         resultsPublishing = ResultsPublishingConfig(
             enabled = true,
             endpoint = "http://192.168.10.233:8080/v1/certifications"
-        )
+        ),
+
+        // HWC's hosted Ookla embedded config URL. The cert engine routes
+        // server selection + ping + download + upload through the bundled
+        // ookla binary using this URL. CA bundle ships in assets/cacert.pem
+        // so HTTPS works without depending on the device's CA store.
+        ooklaConfigUrl = "https://config.speedtest.net/v1/embed/yl1umix4fygogu8l/config"
     )
 }

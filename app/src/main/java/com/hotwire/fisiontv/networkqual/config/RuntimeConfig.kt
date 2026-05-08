@@ -17,13 +17,21 @@ import com.hotwire.fisiontv.networkqual.cert.TierThreshold
 data class RuntimeConfig(
     val schemaVersion: Int,
     val configVersion: String,
+    /** Legacy candidate list — only used if Ookla integration is disabled. */
     val servers: List<OoklaServer>,
     val tests: TestsConfig,
     val tiers: List<TierThreshold>,
     val dnsProbeHosts: List<String>,
     val healthAssessment: HealthAssessmentConfig,
     val wifiLinkQuality: WifiLinkQualityConfig,
-    val resultsPublishing: ResultsPublishingConfig
+    val resultsPublishing: ResultsPublishingConfig,
+    /**
+     * Hosted-config URL for the Ookla embedded SDK. When non-blank, the
+     * engine routes server selection + latency + download + upload through
+     * the Ookla binary using this URL. Should be HTTPS in production with
+     * the bundled CA cert; HTTP is acceptable for lab/dev only.
+     */
+    val ooklaConfigUrl: String
 ) {
     init {
         require(schemaVersion > 0) { "schemaVersion must be positive" }
@@ -33,6 +41,7 @@ data class RuntimeConfig(
         require(dnsProbeHosts.isNotEmpty()) { "dnsProbeHosts must not be empty" }
         val ids = servers.map { it.id }
         require(ids.toSet().size == ids.size) { "server ids must be unique: $ids" }
+        require(ooklaConfigUrl.isNotBlank()) { "ooklaConfigUrl must not be blank" }
     }
 }
 

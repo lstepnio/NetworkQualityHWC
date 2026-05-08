@@ -4,7 +4,9 @@ import android.content.Context
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.probes.DefaultProbeFactory
 import com.hotwire.fisiontv.networkqual.cert.probes.ProbeFactory
-import com.hotwire.fisiontv.networkqual.cert.probes.ServerSelector
+import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaRuntime
+import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaSpeedtestPhase
+import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaSpeedtestRunner
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
 import com.hotwire.fisiontv.networkqual.diagnostics.NetworkDiagnostics
 import com.hotwire.fisiontv.networkqual.diagnostics.NetworkDiagnosticsCollector
@@ -24,9 +26,18 @@ import java.util.UUID
  * don't continue past a failed phase: subsequent metrics would be either
  * irrelevant (no server selected) or misleading (bandwidth without latency).
  */
+/**
+ * Function the engine calls to perform the Ookla speedtest phase. The
+ * function is the speedtest — `OoklaSpeedtestPhase.run` in production,
+ * a pre-canned fake in tests. Lets the engine stay constructable with
+ * pure Kotlin in unit tests (no Android Context needed).
+ */
+typealias OoklaSource = suspend (onProgress: (Float) -> Unit) -> com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaSpeedtestOutcome
+
 class CertificationEngine(
     private val config: RuntimeConfig,
     private val probes: ProbeFactory,
+    private val ookla: OoklaSource,
     private val collectDiagnostics: () -> NetworkDiagnostics,
     private val tierEvaluator: TierEvaluator = TierEvaluator(config.tiers),
     private val healthAssessor: HealthAssessor = HealthAssessor(config.tiers, config.healthAssessment),
@@ -41,6 +52,11 @@ class CertificationEngine(
     constructor(context: Context, config: RuntimeConfig) : this(
         config = config,
         probes = DefaultProbeFactory(context, config),
+        ookla = { onProgress ->
+            OoklaSpeedtestPhase(
+                OoklaSpeedtestRunner(OoklaRuntime(context), config.ooklaConfigUrl)
+            ).run(onProgress)
+        },
         collectDiagnostics = { NetworkDiagnosticsCollector.collect(context) }
     )
 
@@ -87,34 +103,30 @@ class CertificationEngine(
 
             val dns = phase(TestStep.DNS) { progress -> probes.dnsProbe().run(progress) }
 
-            val selection = phase(TestStep.SERVER_SELECT) { _ -> probes.serverSelector().pick() }
-            val server = selection.selected
-            val serverProbes = selection.probes.map { p ->
+            // One Ookla execution covers server selection + ping + download
+            // + upload. Sub-progress within the run is mapped onto this
+            // phase's overall slice (see OoklaSpeedtestPhase).
+            val ookla = phase(TestStep.SPEEDTEST) { progress ->
+                this@CertificationEngine.ookla(progress)
+            }
+            val server = ookla.server
+            val serverProbes = listOf(
                 ServerProbe(
-                    id = p.server.id,
-                    name = p.server.name,
-                    host = p.server.host,
-                    rttMs = p.rttMs,
-                    ok = p.ok,
-                    selected = p.server.id == server.id
+                    id = server.id,
+                    name = server.name,
+                    host = server.host,
+                    rttMs = ookla.latency.medianMs,
+                    ok = true,
+                    selected = true
                 )
-            }
+            )
 
-            val latency = phase(TestStep.LATENCY) { progress ->
-                probes.latencyProbe().run(server.host, server.port, progress)
-            }
-            val download = phase(TestStep.DOWNLOAD) { progress ->
-                probes.downloadProbe().run(server, progress)
-            }
-            val upload = phase(TestStep.UPLOAD) { progress ->
-                probes.uploadProbe().run(server, progress)
-            }
             val playback = phase(TestStep.PLAYBACK) { progress ->
                 probes.playbackProbe().run(progress)
             }
 
-            val outcome = tierEvaluator.evaluate(latency, download, playback)
-            val health = healthAssessor.assess(outcome.networkAchieved, download, latency)
+            val outcome = tierEvaluator.evaluate(ookla.latency, ookla.download, playback)
+            val health = healthAssessor.assess(outcome.networkAchieved, ookla.download, ookla.latency)
             val wifiLink = diagnostics.wifi?.let { wifiAssessor.assess(it) }
 
             val result = CertificationResult(
@@ -125,12 +137,12 @@ class CertificationEngine(
                 achievedTier = outcome.networkAchieved,
                 playbackAchievedTier = outcome.playbackAchieved,
                 selectedServer = server,
-                selectedServerRttMs = selection.selectedRttMs,
+                selectedServerRttMs = ookla.latency.medianMs,
                 serverProbes = serverProbes,
                 dns = dns,
-                latency = latency,
-                download = download,
-                upload = upload,
+                latency = ookla.latency,
+                download = ookla.download,
+                upload = ookla.upload,
                 playback = playback,
                 tierBreakdown = outcome.breakdown,
                 diagnostics = diagnostics,

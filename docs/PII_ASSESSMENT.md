@@ -199,8 +199,8 @@ they've been considered:
 
 | Field | Recommendation |
 |---|---|
-| `identity.hsn` | **Hash with HMAC-SHA256, server-side pepper.** Keep the hash for fleet-correlation queries; lose the raw value on ingest. Inverse-lookup at customer-care request rather than on every record. |
-| `identity.hardwareSerial` | Same as HSN. |
+| `identity.hsn` | **Store raw — DO NOT hash.** SecOps decision: HSN is an internal-system identifier that must be queryable as-is to link a certification record to the corresponding customer account in HWC's billing / inventory systems. The HSN is also displayed on the on-screen results page for a tech to write onto the install ticket. Treat the HSN's confidentiality at the access-control layer (auth-gated APIs, audit logging) rather than via at-rest hashing. |
+| `identity.hardwareSerial` | Store raw, same rationale as HSN — often equals HSN on HWC hardware. |
 | `network.publicIp` | **Don't store the literal IP.** Derive ASN + city-resolution server-side, store those instead. |
 | `network.gatewayIp` / `dhcp.serverAddress` | RFC1918 addresses only — store raw, low risk. |
 | `wifi.bssid` / `wifi.ssid` | Currently null. **If ever enabled, hash both.** |

@@ -11,9 +11,19 @@ import com.hotwire.fisiontv.networkqual.publish.FetchOutcome
 import com.hotwire.fisiontv.networkqual.publish.NoAuthProvider
 import com.hotwire.fisiontv.networkqual.publish.OkHttpCertConfigClient
 import com.hotwire.fisiontv.networkqual.publish.PublishQueue
+import com.hotwire.fisiontv.networkqual.update.AppUpdateClient
+import com.hotwire.fisiontv.networkqual.update.AppUpdateDownloader
+import com.hotwire.fisiontv.networkqual.update.AppUpdateFetchOutcome
+import com.hotwire.fisiontv.networkqual.update.AppUpdateInstaller
+import com.hotwire.fisiontv.networkqual.update.AppVersionManifest
+import com.hotwire.fisiontv.networkqual.update.InstallStatus
+import com.hotwire.fisiontv.networkqual.update.OkHttpAppUpdateClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 /**
@@ -52,6 +62,43 @@ class AppContainer(context: Context) {
         appVersion = BuildConfig.VERSION_NAME
     )
 
+    // ── App self-update plumbing ────────────────────────────────────────
+    private val updateClient: AppUpdateClient = OkHttpAppUpdateClient(
+        endpoint = BuildConfig.APP_UPDATE_URL,
+        authProvider = NoAuthProvider,
+        deviceId = DeviceIdentityCollector.deviceId(applicationContext),
+        appVersion = BuildConfig.VERSION_NAME,
+        appVersionCode = BuildConfig.VERSION_CODE
+    )
+
+    val updateDownloader: AppUpdateDownloader = AppUpdateDownloader(applicationContext.cacheDir)
+    val updateInstaller: AppUpdateInstaller = AppUpdateInstaller(applicationContext)
+
+    /**
+     * Latest fetched manifest. `null` means "we haven't successfully
+     * fetched yet" — the UI treats that as "no update info, behave as
+     * before". Updated atomically by the refresh coroutine in [init].
+     */
+    private val _manifest = MutableStateFlow<AppVersionManifest?>(null)
+    val manifest: StateFlow<AppVersionManifest?> = _manifest.asStateFlow()
+
+    /**
+     * Install lifecycle state. Driven by [com.hotwire.fisiontv.networkqual.update.UpdateInstallReceiver]
+     * via [publishInstallStatus]; read by [MainViewModel] to render
+     * progress / success / failure UI.
+     */
+    private val _installStatus = MutableStateFlow<InstallStatus>(InstallStatus.Idle)
+    val installStatus: StateFlow<InstallStatus> = _installStatus.asStateFlow()
+
+    fun publishInstallStatus(status: InstallStatus) {
+        Log.i(TAG, "install status → $status")
+        _installStatus.value = status
+    }
+
+    val installedVersionCode: Int = BuildConfig.VERSION_CODE
+    val installedVersionName: String = BuildConfig.VERSION_NAME
+    val silentInstallSupported: Boolean = BuildConfig.SILENT_INSTALL_SUPPORTED
+
     private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
@@ -71,6 +118,22 @@ class AppContainer(context: Context) {
         // already on disk and the first speedtest doesn't pay the
         // ~10 ms extraction cost.
         refreshScope.launch { ooklaRuntime.binaryPath /* triggers extraction via lazy */ }
+
+        // Parallel app-update manifest fetch. Same pattern as cert-config:
+        // non-blocking, silent-on-failure. If the manifest endpoint is
+        // unreachable the cert button behaves as before — the installed
+        // version is the baseline. Once the manifest lands, MainViewModel
+        // computes the update gate and the "Run cert" / "Update & run"
+        // label flip is driven from that.
+        refreshScope.launch {
+            when (val outcome = updateClient.fetch()) {
+                is AppUpdateFetchOutcome.Updated -> _manifest.value = outcome.manifest
+                is AppUpdateFetchOutcome.NotModified ->
+                    Log.i(TAG, "app-update 304: keeping cached manifest")
+                is AppUpdateFetchOutcome.Error ->
+                    Log.w(TAG, "app-update fetch failed: ${outcome.cause}")
+            }
+        }
     }
 
     companion object {

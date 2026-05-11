@@ -39,6 +39,17 @@ android {
     // backend on the dev Mac (192.168.10.233:8080); release points at the
     // production hostname declared in the contract's openapi.yaml. Keep
     // the network_security_config.xml allow-list aligned with the debug IP.
+    //
+    // APP_UPDATE_URL feeds the GET /v1/app/version manifest fetch that
+    // gates "Run cert" on having the latest version (see plan:
+    // ~/.claude/plans/rosy-forging-toast.md). APP_SIGNING_CERT_SHA256
+    // is the pinned hex SHA-256 of the platform signing certificate the
+    // installer must see on any downloaded APK before installing it.
+    // Empty string disables the pin (debug builds — sign with the local
+    // debug keystore which varies per-machine). Release fills this in
+    // from the KEYSTORE_CERT_SHA256 env var (the CI computes the hash
+    // from the production signing cert at build time).
+    val releaseSigningCertSha = System.getenv("KEYSTORE_CERT_SHA256")?.lowercase() ?: ""
 
     if (canSignRelease) {
         signingConfigs {
@@ -54,6 +65,9 @@ android {
     buildTypes {
         debug {
             buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:8080/v1/cert-config\"")
+            buildConfigField("String", "APP_UPDATE_URL", "\"http://192.168.10.233:8080/v1/app/version\"")
+            buildConfigField("String", "APP_SIGNING_CERT_SHA256", "\"\"")
+            buildConfigField("boolean", "SILENT_INSTALL_SUPPORTED", "false")
         }
         release {
             isMinifyEnabled = false
@@ -61,6 +75,9 @@ android {
             signingConfig = if (canSignRelease) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
             buildConfigField("String", "CERT_CONFIG_URL", "\"https://certifier-api.gethotwired.com/v1/cert-config\"")
+            buildConfigField("String", "APP_UPDATE_URL", "\"https://certifier-api.gethotwired.com/v1/app/version\"")
+            buildConfigField("String", "APP_SIGNING_CERT_SHA256", "\"$releaseSigningCertSha\"")
+            buildConfigField("boolean", "SILENT_INSTALL_SUPPORTED", "false")
         }
     }
 

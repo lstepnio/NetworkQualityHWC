@@ -130,18 +130,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     private suspend fun preCertUpdate(): Boolean {
         _state.value = UiState.Preparing("Checking for updates")
-        container.refreshManifest()
-
-        // Wait briefly for the manifest fetch to land. With ETag the
-        // common case is a 304 in <500 ms; 3 s is generous for the
-        // first cold-launch fetch on a slow STB. If it times out we
-        // proceed without a fresh check — the cert is more important
-        // than a perfectly-current manifest.
-        val manifest = withTimeoutOrNull(3_000L) {
-            container.manifest.filterNotNull().first()
+        // FORCE refresh (bypass the 30s rate-limit). The cost is one 304
+        // round-trip; the cost of skipping is running the cert on an
+        // outdated client because we read the stale cached manifest.
+        val refreshJob = container.refreshManifest(force = true)
+        // Wait for the in-flight fetch to actually land before reading
+        // the manifest value. Without this join() the StateFlow's first()
+        // returns whatever was cached at boot — a classic read-then-fetch
+        // race that lets a fresh "1002 available" verdict be missed
+        // because the cache still says "1001".
+        if (refreshJob != null) {
+            withTimeoutOrNull(3_000L) { refreshJob.join() }
         }
+        val manifest = container.manifest.value
         if (manifest == null) {
-            Log.w(TAG, "pre-cert: manifest fetch timed out; proceeding with installed version")
+            Log.w(TAG, "pre-cert: no manifest available; proceeding with installed version")
             return true
         }
         if (manifest.latestVersionCode <= container.installedVersionCode) {

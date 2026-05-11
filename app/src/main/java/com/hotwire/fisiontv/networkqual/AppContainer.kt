@@ -20,6 +20,7 @@ import com.hotwire.fisiontv.networkqual.update.InstallStatus
 import com.hotwire.fisiontv.networkqual.update.OkHttpAppUpdateClient
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -112,28 +113,36 @@ class AppContainer(context: Context) {
     @Volatile private var lastManifestFetchAtMs: Long = 0L
 
     /**
-     * Trigger an app-update manifest refresh. Idempotent and rate-limited
-     * — repeat calls within [MIN_MANIFEST_FETCH_INTERVAL_MS] of the last
-     * fetch are skipped, so wiring this into multiple lifecycle hooks
-     * (Activity.onResume, MainViewModel.startCertification, future
-     * places) doesn't hammer the API. The fetch itself uses an ETag
-     * cache so even when it does run, the common case is a 304.
+     * Trigger an app-update manifest refresh.
+     *
+     * Returns the [Job] that completes when the fetch finishes (or `null`
+     * when the call was rate-limited and skipped). Callers that need the
+     * latest manifest before acting — notably the pre-cert update path —
+     * must `join()` the returned Job, otherwise they race against the
+     * still-in-flight fetch and read the stale cached value.
+     *
+     * Rate-limited to one network fetch per [MIN_MANIFEST_FETCH_INTERVAL_MS]
+     * — wiring this into multiple lifecycle hooks (Activity.onResume,
+     * MainViewModel.startCertification, future places) doesn't hammer the
+     * API. Pass [force] = true to bypass the rate-limit — the pre-cert
+     * path does this because the cost of a 304 is negligible and the
+     * cost of running a cert against a stale "no update available"
+     * decision is much higher.
      *
      * Why this exists: the launch-time fetch in [init] only fires once
      * per process. On long-running app sessions (or when an STB sits
      * idle on the start screen while a new version is published), we'd
-     * miss the new manifest entirely. Calling [refreshManifest] on
-     * resume + before each cert closes that gap.
+     * miss the new manifest entirely.
      */
-    fun refreshManifest() {
+    fun refreshManifest(force: Boolean = false): Job? {
         val now = System.currentTimeMillis()
         val sinceLast = now - lastManifestFetchAtMs
-        if (sinceLast < MIN_MANIFEST_FETCH_INTERVAL_MS) {
+        if (!force && sinceLast < MIN_MANIFEST_FETCH_INTERVAL_MS) {
             Log.i(TAG, "app-update: skip refresh (${sinceLast / 1000}s since last fetch)")
-            return
+            return null
         }
         lastManifestFetchAtMs = now
-        refreshScope.launch {
+        return refreshScope.launch {
             when (val outcome = updateClient.fetch()) {
                 is AppUpdateFetchOutcome.Updated -> {
                     Log.i(TAG, "app-update: new manifest (v${outcome.manifest.latestVersionName}, code=${outcome.manifest.latestVersionCode})")

@@ -97,7 +97,15 @@ class AppContainer(context: Context) {
 
     val installedVersionCode: Int = BuildConfig.VERSION_CODE
     val installedVersionName: String = BuildConfig.VERSION_NAME
-    val silentInstallSupported: Boolean = BuildConfig.SILENT_INSTALL_SUPPORTED
+    /**
+     * Whether this running process will install silently. Determined at
+     * runtime from the actual INSTALL_PACKAGES grant — true for a
+     * platform-signed system-app build, false for a sideloaded build of
+     * the same APK. Surfaced here so the UI can shape its "Installing…"
+     * copy (the system dialog hint only applies to the non-silent path).
+     */
+    val silentInstallSupported: Boolean
+        get() = updateInstaller.canInstallSilently()
 
     private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 

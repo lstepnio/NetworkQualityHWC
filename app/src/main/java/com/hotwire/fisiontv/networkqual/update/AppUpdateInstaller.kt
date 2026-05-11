@@ -1,5 +1,6 @@
 package com.hotwire.fisiontv.networkqual.update
 
+import android.Manifest
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -22,19 +23,24 @@ import java.security.MessageDigest
  *   2. The APK's `versionCode` is strictly greater than the installed
  *      versionCode (no downgrades).
  *
- * Install flow (non-system app path):
+ * Install flow:
  *   - Open a [PackageInstaller.Session]
  *   - Stream the verified APK bytes in
- *   - Commit with an [PendingIntent] targeting [UpdateInstallReceiver]
- *   - PackageInstaller emits `STATUS_PENDING_USER_ACTION` → the receiver
- *     launches the system "Install update?" dialog
- *   - After the tech taps Install/Cancel, the receiver fires again with
- *     `STATUS_SUCCESS` / `STATUS_FAILURE`
+ *   - Commit with a [PendingIntent] targeting [UpdateInstallReceiver]
+ *   - PackageInstaller either installs silently (if we hold
+ *     INSTALL_PACKAGES) or emits `STATUS_PENDING_USER_ACTION` so the
+ *     receiver can launch the system "Install update?" dialog
+ *   - When done, the receiver fires with `STATUS_SUCCESS` /
+ *     `STATUS_FAILURE`
  *
- * When `BuildConfig.SILENT_INSTALL_SUPPORTED` flips true (system-app
- * pivot), the same code path applies — the OS just skips the
- * confirmation dialog because the caller holds INSTALL_PACKAGES
- * signature permission.
+ * Silent vs. interactive is decided at **runtime** by whether the
+ * platform actually granted [Manifest.permission.INSTALL_PACKAGES]
+ * (a signature permission only granted to apps signed with the
+ * platform key). The same APK works in both modes: a sideloaded
+ * build sees no grant and falls back to the system confirm dialog;
+ * a firmware-embedded, platform-signed build of the same APK gets
+ * the grant and installs silently. No build-variant coordination
+ * required when the OEM signing path lands.
  */
 class AppUpdateInstaller(private val context: Context) {
 
@@ -120,12 +126,23 @@ class AppUpdateInstaller(private val context: Context) {
      */
     fun beginInstall(apkFile: File, manifest: AppVersionManifest): BeginOutcome {
         val pi = context.packageManager.packageInstaller
+        val silent = canInstallSilently()
+        Log.i(TAG, "begin install (silent=$silent) for code=${manifest.latestVersionCode}")
+
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL
         ).apply {
             setAppPackageName(context.packageName)
+            // On S+ the OS gates silent install behind setRequireUserAction()
+            // EVEN when the caller holds INSTALL_PACKAGES. Set NOT_REQUIRED
+            // only when we actually have the permission; otherwise the OS
+            // will refuse the session. On pre-S the API doesn't exist and
+            // the permission grant alone controls silent-vs-prompt.
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                setRequireUserAction(PackageInstaller.SessionParams.USER_ACTION_REQUIRED)
+                setRequireUserAction(
+                    if (silent) PackageInstaller.SessionParams.USER_ACTION_NOT_REQUIRED
+                    else PackageInstaller.SessionParams.USER_ACTION_REQUIRED
+                )
             }
         }
 
@@ -168,6 +185,19 @@ class AppUpdateInstaller(private val context: Context) {
 
         return BeginOutcome.Pending
     }
+
+    /**
+     * Runtime probe for the silent-install path. `INSTALL_PACKAGES` is a
+     * signature-protected permission; the OS only grants it to apps
+     * signed with the platform key (i.e., when shipped as a system app
+     * baked into firmware). Sideloaded builds of the same APK return
+     * false here and fall back to the [Manifest.permission.REQUEST_INSTALL_PACKAGES]
+     * intent flow + system "Install update?" dialog. No build-variant
+     * gymnastics — the same binary works in both modes.
+     */
+    fun canInstallSilently(): Boolean =
+        context.checkSelfPermission(Manifest.permission.INSTALL_PACKAGES) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun readApkInfo(apkFile: File): PackageInfo? {
         @Suppress("DEPRECATION")

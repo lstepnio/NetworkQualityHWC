@@ -129,7 +129,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * version.
      */
     private suspend fun preCertUpdate(): Boolean {
-        _state.value = UiState.Preparing("Checking for updates")
+        // Intentionally NOT setting a "Checking for updates" Preparing
+        // state here. With ETag the manifest fetch is a sub-200 ms 304
+        // in the common case — long enough to flash visibly but far
+        // too short to read, which looked like a UI glitch in the lab.
+        // The Start screen stays on screen until we either know an
+        // update is needed (transition to Downloading below) or we're
+        // proceeding straight to the cert (runCertEngine sets Running).
+        // The button-tap ripple covers the perceived gap.
+        //
         // FORCE refresh (bypass the 30s rate-limit). The cost is one 304
         // round-trip; the cost of skipping is running the cert on an
         // outdated client because we read the stale cached manifest.

@@ -41,9 +41,14 @@ jobs:
 
       - name: Derive version
         id: version
+        # versionCode = 1000 + rev-list count. The +1000 offset lifts the
+        # CI-driven track above the hand-built 100-series APKs that were
+        # used during early self-update bring-up (codes 100..103). Keeps a
+        # single monotonic versionCode axis so the STB will always upgrade,
+        # never see a downgrade rejection.
         run: |
           TAG="${GITHUB_REF_NAME#v}"
-          CODE=$(git rev-list --count HEAD)
+          CODE=$((1000 + $(git rev-list --count HEAD)))
           echo "name=$TAG" >> "$GITHUB_OUTPUT"
           echo "code=$CODE" >> "$GITHUB_OUTPUT"
           echo "Version name: $TAG"

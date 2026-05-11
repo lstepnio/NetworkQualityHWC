@@ -22,6 +22,11 @@ fun AppRoot(viewModel: MainViewModel) {
             MainViewModel.UiState.Idle -> StartScreen(
                 onStart = { viewModel.startCertification() }
             )
+            is MainViewModel.UiState.Preparing -> PreparingScreen(
+                title = s.title,
+                subtitle = s.subtitle,
+                fraction = s.frac
+            )
             is MainViewModel.UiState.Running -> RunningScreen(
                 currentStep = s.currentStep,
                 stepFrac = s.stepFrac,

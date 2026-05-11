@@ -14,19 +14,21 @@ import com.hotwire.fisiontv.networkqual.data.toEntity
 import com.hotwire.fisiontv.networkqual.update.AppUpdateDownloader
 import com.hotwire.fisiontv.networkqual.update.AppUpdateInstaller
 import com.hotwire.fisiontv.networkqual.update.AppVersionManifest
+import com.hotwire.fisiontv.networkqual.update.InstallStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import java.io.File
 import java.io.IOException
 
@@ -36,6 +38,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     sealed interface UiState {
         data object Idle : UiState
+
+        /**
+         * Pre-cert / update phase. Single state with optional progress —
+         * covers "checking for updates", "downloading update", "installing
+         * update", and the brief "retrying…" between attempts. Mostly
+         * invisible to the tech in the no-update case (it transitions
+         * straight through to Running within a few hundred ms).
+         */
+        data class Preparing(
+            val title: String,
+            val subtitle: String? = null,
+            val frac: Float? = null
+        ) : UiState
+
         data class Running(
             val currentStep: TestStep,
             val stepFrac: Float,
@@ -61,131 +77,158 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val installedVersionName: String = container.installedVersionName
 
     private var runJob: Job? = null
-    private var autoUpdateJob: Job? = null
 
     init {
         // Drain anything left over from a prior session — STB killed
         // before the publish completed, network was down, etc.
         viewModelScope.launch { drainQueue(configProvider.current()) }
 
-        // Self-update orchestration. The manifest fetch fires in
-        // AppContainer.init in parallel with cert-config; when a newer
-        // version lands here we attempt the download → verify → install
-        // pipeline transparently. The cert is never blocked by this:
-        // - install is deferred until any running cert completes,
-        // - failures log but don't surface UI,
-        // - retries are bounded; after they're exhausted, we proceed
-        //   on the installed version and let the cert run.
-        viewModelScope.launch {
-            container.manifest
-                .filterNotNull()
-                .distinctUntilChanged()
-                .collectLatest { manifest -> maybeAutoUpdate(manifest) }
+        // If the previous process committed an "update then cert" flow
+        // and the OS replaced us, the new boot fires the cert
+        // automatically so the tech doesn't have to tap twice.
+        if (app.consumeResumeCertAfterUpdateFlag()) {
+            Log.i(TAG, "resuming cert after successful update install")
+            startCertification()
         }
     }
-
-    fun startCertification() {
-        if (runJob?.isActive == true) return
-        // Pre-cert version check. Triggers a manifest refresh so that a
-        // newer-version-published-while-the-app-was-idle is picked up
-        // before this run. The refresh is async and rate-limited inside
-        // AppContainer; the cert kicks off immediately, the auto-update
-        // pipeline (if a newer manifest arrives) starts in parallel and
-        // defers its install commit until this runJob.join()'s.
-        container.refreshManifest()
-        // Re-read config per run so a refresh that arrived between runs
-        // (once the cert-config API is wired) takes effect on the next
-        // click of "Run again" without an app restart.
-        val config = configProvider.current()
-        val engine = CertificationEngine(getApplication(), config, container.ooklaRuntime)
-        runJob = viewModelScope.launch {
-            _state.value = UiState.Running(TestStep.DNS, 0f, 0f)
-            engine.run().collect { event ->
-                when (event) {
-                    is EngineEvent.StepProgress ->
-                        _state.value = UiState.Running(event.step, event.stepFrac, event.overallFrac)
-                    is EngineEvent.Complete -> {
-                        _state.value = UiState.Done(event.result)
-                        withContext(Dispatchers.IO) {
-                            historyDao.insert(event.result.toEntity())
-                        }
-                        enqueueAndDrain(event.result, config)
-                    }
-                    is EngineEvent.Failed ->
-                        _state.value = UiState.Failed(event.step, event.cause)
-                }
-            }
-        }
-    }
-
-    // ── Auto-update pipeline ─────────────────────────────────────────────
 
     /**
-     * Outcomes the per-attempt pipeline can return.
-     * `Permanent` means retrying is pointless (deterministic check failed —
-     * SHA mismatch, signing cert mismatch, downgrade refused). `Transient`
-     * means a retry might succeed (network blip, install session quirk).
+     * Tech-facing entry point for "I want a cert". Always tries to update
+     * before running so the cert reflects the latest tier thresholds,
+     * server list, etc. If the update can't complete (network failure,
+     * integrity rejection, etc.) the cert runs on the installed version
+     * anyway — "ultimately still run the certification and post the
+     * results" beats "blocked in the field".
      */
-    private sealed interface UpdateAttempt {
-        data object Success : UpdateAttempt
-        data object Permanent : UpdateAttempt
-        data class Transient(val cause: String) : UpdateAttempt
-    }
-
-    private suspend fun maybeAutoUpdate(manifest: AppVersionManifest) {
-        if (manifest.latestVersionCode <= container.installedVersionCode) {
-            // Already current. Note that an older manifest (server rolled
-            // a version back) is also a no-op — never auto-downgrade.
-            Log.i(TAG, "auto-update: installed (${container.installedVersionCode}) >= latest (${manifest.latestVersionCode}); no-op")
-            return
+    fun startCertification() {
+        if (runJob?.isActive == true) return
+        runJob = viewModelScope.launch {
+            // Phase 1: refresh manifest, apply update if newer.
+            if (!preCertUpdate()) {
+                // Install was committed — the OS will replace this
+                // process imminently. The resume flag is set; the new
+                // process's init will see it and re-fire startCertification
+                // on the new version. We stay in Preparing.Installing
+                // until the OS kills us.
+                awaitCancellation()
+            }
+            // Phase 2: run the actual cert.
+            runCertEngine()
         }
-        if (autoUpdateJob?.isActive == true) return
-        autoUpdateJob = viewModelScope.launch { runAutoUpdate(manifest) }
     }
 
-    private suspend fun runAutoUpdate(manifest: AppVersionManifest) {
-        // Backoffs are intentionally generous — a flaky network shouldn't
-        // burn cycles, and the install kill-window for the OS process
-        // replacement is non-trivial. We retry only on transient
-        // failures; integrity failures are permanent and return immediately.
-        val backoffsMs = listOf(5_000L, 30_000L, 120_000L)
-        repeat(backoffsMs.size + 1) { attempt ->
-            Log.i(TAG, "auto-update v${manifest.latestVersionName}: attempt ${attempt + 1}/${backoffsMs.size + 1}")
+    /**
+     * Refresh the manifest, then — if a newer version exists — try to
+     * download + verify + install it before the cert.
+     *
+     * Returns `true` when the cert should proceed in this process
+     * (no update needed, or update failed and we're falling through).
+     * Returns `false` when the install committed — the caller should
+     * NOT start the cert; the OS will replace the process and the new
+     * boot's resume flag will re-trigger startCertification on the new
+     * version.
+     */
+    private suspend fun preCertUpdate(): Boolean {
+        _state.value = UiState.Preparing("Checking for updates")
+        container.refreshManifest()
+
+        // Wait briefly for the manifest fetch to land. With ETag the
+        // common case is a 304 in <500 ms; 3 s is generous for the
+        // first cold-launch fetch on a slow STB. If it times out we
+        // proceed without a fresh check — the cert is more important
+        // than a perfectly-current manifest.
+        val manifest = withTimeoutOrNull(3_000L) {
+            container.manifest.filterNotNull().first()
+        }
+        if (manifest == null) {
+            Log.w(TAG, "pre-cert: manifest fetch timed out; proceeding with installed version")
+            return true
+        }
+        if (manifest.latestVersionCode <= container.installedVersionCode) {
+            Log.i(TAG, "pre-cert: installed (${container.installedVersionCode}) >= latest (${manifest.latestVersionCode}); no update needed")
+            return true
+        }
+
+        Log.i(TAG, "pre-cert: update available v${manifest.latestVersionName} (code ${manifest.latestVersionCode}); applying before cert")
+        return runPreCertUpdate(manifest)
+    }
+
+    private suspend fun runPreCertUpdate(manifest: AppVersionManifest): Boolean {
+        val maxAttempts = 2
+        val backoffMs = 5_000L
+
+        repeat(maxAttempts) { attempt ->
+            Log.i(TAG, "pre-cert update v${manifest.latestVersionName}: attempt ${attempt + 1}/$maxAttempts")
             when (val r = attemptUpdate(manifest)) {
                 UpdateAttempt.Success -> {
-                    Log.i(TAG, "auto-update committed; OS will replace the process")
-                    return
+                    // Install was committed. Set the resume flag so the
+                    // post-swap process auto-fires startCertification, then
+                    // park the UI in "Installing…" — either the OS replaces
+                    // us (success), or the user cancels the system dialog
+                    // (we fall through and run the cert on this version).
+                    app.markResumeCertAfterUpdate(manifest.latestVersionCode)
+                    _state.value = UiState.Preparing(
+                        title = "Installing update v${manifest.latestVersionName}",
+                        subtitle = "The app will restart and run the certification automatically."
+                    )
+                    val terminal = container.installStatus.first {
+                        it is InstallStatus.Success || it is InstallStatus.Failed
+                    }
+                    return when (terminal) {
+                        is InstallStatus.Success -> false  // caller awaits OS swap
+                        is InstallStatus.Failed -> {
+                            Log.w(TAG, "pre-cert install failed post-commit: ${terminal.reason}")
+                            app.clearResumeCertAfterUpdate()
+                            true  // fall through to cert
+                        }
+                        else -> true
+                    }
                 }
                 UpdateAttempt.Permanent -> {
-                    Log.w(TAG, "auto-update gave up — permanent failure (won't retry)")
-                    return
+                    Log.w(TAG, "pre-cert update permanent failure; proceeding with cert on installed version")
+                    return true
                 }
                 is UpdateAttempt.Transient -> {
-                    val isLast = attempt >= backoffsMs.size
+                    val isLast = attempt >= maxAttempts - 1
                     if (isLast) {
-                        Log.w(TAG, "auto-update exhausted retries (${r.cause}); cert will run on installed version ${container.installedVersionCode}")
-                        return
+                        Log.w(TAG, "pre-cert update exhausted retries (${r.cause}); proceeding with cert")
+                        return true
                     }
-                    val backoff = backoffsMs[attempt]
-                    Log.w(TAG, "auto-update transient (${r.cause}); next attempt in ${backoff}ms")
-                    delay(backoff)
+                    Log.w(TAG, "pre-cert update transient (${r.cause}); retrying in ${backoffMs}ms")
+                    _state.value = UiState.Preparing(
+                        title = "Updating to v${manifest.latestVersionName}",
+                        subtitle = "Retrying — ${r.cause}"
+                    )
+                    delay(backoffMs)
                 }
             }
         }
+        return true
     }
 
     private suspend fun attemptUpdate(manifest: AppVersionManifest): UpdateAttempt {
-        // 1. Stream the APK to cache, hashing as we go. The downloader
-        //    deletes the partial file on any failure.
+        // 1. Download with live progress reporting into the UI.
+        _state.value = UiState.Preparing(
+            title = "Updating to v${manifest.latestVersionName}",
+            subtitle = "Downloading…",
+            frac = 0f
+        )
         var apkFile: File? = null
         try {
             container.updateDownloader.download(manifest).collect { p ->
-                if (p is AppUpdateDownloader.Progress.Done) apkFile = p.apkFile
+                when (p) {
+                    is AppUpdateDownloader.Progress.Downloading ->
+                        _state.value = UiState.Preparing(
+                            title = "Updating to v${manifest.latestVersionName}",
+                            subtitle = "Downloading…",
+                            frac = p.fraction
+                        )
+                    is AppUpdateDownloader.Progress.Done -> apkFile = p.apkFile
+                }
             }
         } catch (e: AppUpdateDownloader.IntegrityException) {
-            return UpdateAttempt.Permanent.also {
-                Log.w(TAG, "auto-update download integrity: ${e.message}")
-            }
+            Log.w(TAG, "pre-cert download integrity: ${e.message}")
+            return UpdateAttempt.Permanent
         } catch (e: IOException) {
             return UpdateAttempt.Transient("download IO: ${e.message ?: e::class.simpleName}")
         } catch (e: Throwable) {
@@ -193,41 +236,56 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val file = apkFile ?: return UpdateAttempt.Transient("download completed without Done frame")
 
-        // 2. Verify the downloaded APK against the manifest + pinned signing
-        //    cert. Verification is deterministic — failure is permanent
-        //    because retrying with the same bytes will fail the same way.
+        // 2. Verify (deterministic — permanent on rejection).
         when (val v = container.updateInstaller.verify(file, manifest)) {
             AppUpdateInstaller.VerifyOutcome.Ok -> { /* proceed */ }
             is AppUpdateInstaller.VerifyOutcome.Reject -> {
-                Log.w(TAG, "auto-update verify rejected: ${v.reason}")
+                Log.w(TAG, "pre-cert verify rejected: ${v.reason}")
                 file.delete()
                 return UpdateAttempt.Permanent
             }
         }
 
-        // 3. Wait for any in-flight cert to complete before committing the
-        //    install — the install replaces the app process and would
-        //    interrupt the cert mid-run. After this join() returns, the
-        //    cert is done (or there was no cert running) and the install
-        //    can safely commit. This is the "cert always wins" invariant.
-        runJob?.let {
-            Log.i(TAG, "auto-update: waiting for in-flight cert to complete before install")
-            it.join()
-        }
-
-        // 4. Commit the install session. On a sideloaded build the OS
-        //    immediately fires PENDING_USER_ACTION to UpdateInstallReceiver,
-        //    which launches the system "Install update?" dialog. On a
-        //    platform-signed (system-app) build the install runs silently
-        //    and the OS replaces the app process directly.
+        // 3. Commit install. Pending → caller will park in Installing state
+        //    and wait for the receiver's Success/Failed.
         return when (val b = container.updateInstaller.beginInstall(file, manifest)) {
             AppUpdateInstaller.BeginOutcome.Pending -> UpdateAttempt.Success
             is AppUpdateInstaller.BeginOutcome.Refused -> {
-                Log.w(TAG, "auto-update install refused: ${b.reason}")
+                Log.w(TAG, "pre-cert install refused: ${b.reason}")
                 UpdateAttempt.Permanent
             }
             is AppUpdateInstaller.BeginOutcome.Failed -> {
                 UpdateAttempt.Transient("install session: ${b.cause}")
+            }
+        }
+    }
+
+    private sealed interface UpdateAttempt {
+        data object Success : UpdateAttempt
+        data object Permanent : UpdateAttempt
+        data class Transient(val cause: String) : UpdateAttempt
+    }
+
+    private suspend fun runCertEngine() {
+        _state.value = UiState.Running(TestStep.DNS, 0f, 0f)
+        // Re-read config per run so a refresh that arrived between runs
+        // (once the cert-config API is wired) takes effect on the next
+        // click of "Run again" without an app restart.
+        val config = configProvider.current()
+        val engine = CertificationEngine(getApplication(), config, container.ooklaRuntime)
+        engine.run().collect { event ->
+            when (event) {
+                is EngineEvent.StepProgress ->
+                    _state.value = UiState.Running(event.step, event.stepFrac, event.overallFrac)
+                is EngineEvent.Complete -> {
+                    _state.value = UiState.Done(event.result)
+                    withContext(Dispatchers.IO) {
+                        historyDao.insert(event.result.toEntity())
+                    }
+                    enqueueAndDrain(event.result, config)
+                }
+                is EngineEvent.Failed ->
+                    _state.value = UiState.Failed(event.step, event.cause)
             }
         }
     }

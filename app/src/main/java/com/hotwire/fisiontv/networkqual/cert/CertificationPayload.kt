@@ -48,6 +48,45 @@ object CertificationPayload {
         }
     }
 
+    /**
+     * Stamps a frozen payload with submission metadata at POST time.
+     *
+     * The persisted payload (built by [toJson] at enqueue time) carries
+     * [CertificationResult.startedAtMs] and [CertificationResult.timestampMs]
+     * — the moments the certification began and completed on the STB.
+     * When the publish API is down those bytes can sit in the queue for
+     * hours or days before a successful POST, so the moment the backend
+     * receives the request bears no relation to when the cert actually
+     * ran.
+     *
+     * This function adds two POST-time fields without disturbing the
+     * frozen measurement payload:
+     *
+     *  - `submittedAt`: when this specific POST attempt was made
+     *  - `enqueuedAt`:  when the row first entered the queue
+     *
+     * Together with the existing `startedAt`/`completedAt`, the backend
+     * can reconstruct the full timeline (ran → queued → submitted) and
+     * key its own storage off the cert's actual completion time rather
+     * than the request-received time.
+     *
+     * Failure mode: if the payload won't parse (corrupted row, partial
+     * write), the original string is returned unchanged so the row still
+     * has a chance to POST. The backend's own validation will catch the
+     * malformed body.
+     */
+    fun stampSubmission(payloadJson: String, submittedAtMs: Long, enqueuedAtMs: Long): String {
+        return try {
+            JSONObject(payloadJson).apply {
+                put("submittedAt", iso(submittedAtMs))
+                put("enqueuedAt", iso(enqueuedAtMs))
+            }.toString()
+        } catch (t: Throwable) {
+            Log.w(TAG, "stampSubmission failed (${t::class.simpleName}: ${t.message}); sending unstamped payload")
+            payloadJson
+        }
+    }
+
     private fun deviceJson(d: NetworkDiagnostics): JSONObject = JSONObject().apply {
         put("model", d.device.model)
         put("manufacturer", d.device.manufacturer)

@@ -111,4 +111,29 @@ class CertificationPayloadTest {
         val parsed = JSONObject(source)
         assertThat(parsed.getString("certificationId")).isEqualTo("00000000-0000-0000-0000-000000000abc")
     }
+
+    @Test fun `stampSubmission adds submittedAt and enqueuedAt without touching cert timestamps`() {
+        val frozen = CertificationPayload.toJson(sampleResult()).toString()
+        val stamped = CertificationPayload.stampSubmission(
+            payloadJson = frozen,
+            submittedAtMs = 1_700_000_900_000L, // ~14 min after completedAt
+            enqueuedAtMs = 1_700_000_065_000L   // ~5 s after completedAt
+        )
+        val parsed = JSONObject(stamped)
+        // Cert run timestamps must survive untouched — these are what the
+        // backend should key cert storage off of.
+        assertThat(parsed.getString("startedAt")).isEqualTo("2023-11-14T22:13:20Z")
+        assertThat(parsed.getString("completedAt")).isEqualTo("2023-11-14T22:14:20Z")
+        // Submission timestamps live alongside, not on top.
+        assertThat(parsed.getString("enqueuedAt")).isEqualTo("2023-11-14T22:14:25Z")
+        assertThat(parsed.getString("submittedAt")).isEqualTo("2023-11-14T22:28:20Z")
+    }
+
+    @Test fun `stampSubmission returns input unchanged when payload is malformed`() {
+        val junk = "not-json-at-all"
+        val stamped = CertificationPayload.stampSubmission(junk, 1L, 2L)
+        // Defensive: a corrupted queue row still gets a POST attempt.
+        // The backend's own validation catches the malformed body.
+        assertThat(stamped).isEqualTo(junk)
+    }
 }

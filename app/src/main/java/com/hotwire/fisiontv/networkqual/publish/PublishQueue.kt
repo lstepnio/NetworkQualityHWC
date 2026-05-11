@@ -112,9 +112,19 @@ class PublishQueue(
          * substitute a fake without dragging OkHttp into JVM unit tests.
          */
         fun okHttpSender(
-            httpClient: OkHttpClient = OkHttpResultPublisher.defaultClient()
+            httpClient: OkHttpClient = OkHttpResultPublisher.defaultClient(),
+            now: () -> Long = System::currentTimeMillis
         ): suspend (PendingPublishEntity, String, String?) -> PublishOutcome {
             return { row, endpoint, authHeader ->
+                // Stamp submittedAt/enqueuedAt onto the frozen payload at
+                // POST time. The body the backend actually receives carries
+                // four timestamps: startedAt + completedAt (from the cert
+                // run, frozen at enqueue) and enqueuedAt + submittedAt
+                // (added here so the backend can tell when the row sat in
+                // the queue vs. when the cert itself happened).
+                val body = CertificationPayload
+                    .stampSubmission(row.payloadJson, submittedAtMs = now(), enqueuedAtMs = row.createdAtMs)
+                    .toRequestBody("application/json".toMediaType())
                 val req = Request.Builder()
                     .url(endpoint)
                     .addHeader("Content-Type", "application/json")
@@ -122,7 +132,7 @@ class PublishQueue(
                     .addHeader("X-App-Version", row.appVersion)
                     .addHeader("X-Schema-Version", row.schemaVersion.toString())
                     .apply { if (authHeader != null) addHeader("Authorization", authHeader) }
-                    .post(row.payloadJson.toRequestBody("application/json".toMediaType()))
+                    .post(body)
                     .build()
                 try {
                     httpClient.newCall(req).execute().use { resp ->

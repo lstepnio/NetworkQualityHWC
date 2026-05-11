@@ -80,8 +80,13 @@ android {
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             signingConfig = if (canSignRelease) signingConfigs.getByName("release")
                 else signingConfigs.getByName("debug")
-            buildConfigField("String", "CERT_CONFIG_URL", "\"https://certifier-api.gethotwired.com/v1/cert-config\"")
-            buildConfigField("String", "APP_UPDATE_URL", "\"https://certifier-api.gethotwired.com/v1/app/version\"")
+            // MVP: hardcoded to the dev backend on the LAN. No prod DNS
+            // exists yet (`certifier-api.gethotwired.com` is a placeholder).
+            // Swap to the real prod hostname when it lands; until then,
+            // release-signed APKs target the same dev backend as debug,
+            // simplifying the lab workflow.
+            buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:8080/v1/cert-config\"")
+            buildConfigField("String", "APP_UPDATE_URL", "\"http://192.168.10.233:8080/v1/app/version\"")
             buildConfigField("String", "APP_SIGNING_CERT_SHA256", "\"$releaseSigningCertSha\"")
         }
     }

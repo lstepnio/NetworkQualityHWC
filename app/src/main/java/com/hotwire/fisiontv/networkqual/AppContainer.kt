@@ -109,6 +109,44 @@ class AppContainer(context: Context) {
 
     private val refreshScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    @Volatile private var lastManifestFetchAtMs: Long = 0L
+
+    /**
+     * Trigger an app-update manifest refresh. Idempotent and rate-limited
+     * — repeat calls within [MIN_MANIFEST_FETCH_INTERVAL_MS] of the last
+     * fetch are skipped, so wiring this into multiple lifecycle hooks
+     * (Activity.onResume, MainViewModel.startCertification, future
+     * places) doesn't hammer the API. The fetch itself uses an ETag
+     * cache so even when it does run, the common case is a 304.
+     *
+     * Why this exists: the launch-time fetch in [init] only fires once
+     * per process. On long-running app sessions (or when an STB sits
+     * idle on the start screen while a new version is published), we'd
+     * miss the new manifest entirely. Calling [refreshManifest] on
+     * resume + before each cert closes that gap.
+     */
+    fun refreshManifest() {
+        val now = System.currentTimeMillis()
+        val sinceLast = now - lastManifestFetchAtMs
+        if (sinceLast < MIN_MANIFEST_FETCH_INTERVAL_MS) {
+            Log.i(TAG, "app-update: skip refresh (${sinceLast / 1000}s since last fetch)")
+            return
+        }
+        lastManifestFetchAtMs = now
+        refreshScope.launch {
+            when (val outcome = updateClient.fetch()) {
+                is AppUpdateFetchOutcome.Updated -> {
+                    Log.i(TAG, "app-update: new manifest (v${outcome.manifest.latestVersionName}, code=${outcome.manifest.latestVersionCode})")
+                    _manifest.value = outcome.manifest
+                }
+                is AppUpdateFetchOutcome.NotModified ->
+                    Log.i(TAG, "app-update 304: keeping cached manifest")
+                is AppUpdateFetchOutcome.Error ->
+                    Log.w(TAG, "app-update fetch failed: ${outcome.cause}")
+            }
+        }
+    }
+
     init {
         // Kick off a config refresh on launch. The result lands via
         // configProvider.apply() — typically before the user clicks "Run",
@@ -127,24 +165,23 @@ class AppContainer(context: Context) {
         // ~10 ms extraction cost.
         refreshScope.launch { ooklaRuntime.binaryPath /* triggers extraction via lazy */ }
 
-        // Parallel app-update manifest fetch. Same pattern as cert-config:
-        // non-blocking, silent-on-failure. If the manifest endpoint is
-        // unreachable the cert button behaves as before — the installed
-        // version is the baseline. Once the manifest lands, MainViewModel
-        // computes the update gate and the "Run cert" / "Update & run"
-        // label flip is driven from that.
-        refreshScope.launch {
-            when (val outcome = updateClient.fetch()) {
-                is AppUpdateFetchOutcome.Updated -> _manifest.value = outcome.manifest
-                is AppUpdateFetchOutcome.NotModified ->
-                    Log.i(TAG, "app-update 304: keeping cached manifest")
-                is AppUpdateFetchOutcome.Error ->
-                    Log.w(TAG, "app-update fetch failed: ${outcome.cause}")
-            }
-        }
+        // Initial manifest fetch. Subsequent fetches are triggered by
+        // MainActivity.onResume (tech returns to the app) and by
+        // MainViewModel.startCertification (right before each run) — both
+        // funnel through refreshManifest() which rate-limits to avoid
+        // burning the API.
+        refreshManifest()
     }
 
     companion object {
         private const val TAG = "AppContainer"
+        /**
+         * Minimum gap between manifest fetches. Each fetch is cheap (ETag
+         * → 304 in the common case) but we don't need to ask multiple
+         * times per minute. 30 s is generous — picks up a freshly-published
+         * version on the next tech action, doesn't spam during routine
+         * Activity lifecycle churn (screen-off → screen-on burst).
+         */
+        private const val MIN_MANIFEST_FETCH_INTERVAL_MS = 30_000L
     }
 }

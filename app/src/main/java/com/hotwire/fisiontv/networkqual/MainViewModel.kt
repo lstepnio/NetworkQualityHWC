@@ -86,6 +86,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun startCertification() {
         if (runJob?.isActive == true) return
+        // Pre-cert version check. Triggers a manifest refresh so that a
+        // newer-version-published-while-the-app-was-idle is picked up
+        // before this run. The refresh is async and rate-limited inside
+        // AppContainer; the cert kicks off immediately, the auto-update
+        // pipeline (if a newer manifest arrives) starts in parallel and
+        // defers its install commit until this runJob.join()'s.
+        container.refreshManifest()
         // Re-read config per run so a refresh that arrived between runs
         // (once the cert-config API is wired) takes effect on the next
         // click of "Run again" without an app restart.

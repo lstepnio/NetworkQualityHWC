@@ -33,4 +33,16 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    override fun onResume() {
+        super.onResume()
+        // Re-check for a newer app version whenever the tech returns to
+        // the foreground. The launch-time fetch in AppContainer.init
+        // only fires once per process; without this hook, an app that's
+        // been sitting on the start screen for an hour while a new
+        // version is published would never notice. Rate-limited in
+        // AppContainer.refreshManifest so a screen-off / screen-on flurry
+        // doesn't burn the API.
+        (application as FisionApp).container.refreshManifest()
+    }
 }

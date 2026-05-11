@@ -18,3 +18,8 @@ signing.properties
 local.properties
 /app/build
 /app/release
+
+# scripts/dev-update-server.py state — bumped versionCode + the staged
+# APK + manifest it serves to the STB. Per-dev, never committed.
+scripts/.dev-update-state.json
+scripts/.serve-root/

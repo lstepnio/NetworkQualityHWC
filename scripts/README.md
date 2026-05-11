@@ -49,7 +49,8 @@ The script:
   - `v1/app/download/app-debug-<versionCode>.apk` — the APK
 - detects the LAN IP for the manifest's `apkUrl` so the STB can reach it
 - runs a tiny `http.server`-based listener on the same port the debug
-  build is hardcoded to poll (`8080`)
+  build is hardcoded to poll (`18080` — chosen to avoid the very
+  common `8080` clash with Docker/OrbStack)
 
 ### Flags
 
@@ -59,7 +60,7 @@ The script:
 | `--serve-only`    | _off_       | Skip the Gradle build; serve whatever's already in `app/build/outputs/`. Useful if you've just built via Android Studio. |
 | `--optional`      | _off_       | Manifest's `minRequired` stays at 1 so the cert button isn't blocked. Default is forced (`minRequired = latest`) which exercises the "Update & run" path. |
 | `--host <ip>`     | auto-detect | Override the LAN IP baked into `apkUrl` if auto-detect picks a weird interface (VPN, multiple NICs). |
-| `--port <p>`      | `8080`      | Listen port. Match the debug build's `BuildConfig.APP_UPDATE_URL`. |
+| `--port <p>`      | `18080`     | Listen port. Match the debug build's `BuildConfig.APP_UPDATE_URL`. |
 | `--notes <str>`   | `dev build` | `releaseNotes` shown in the STB UI banner. |
 
 ### State
@@ -70,7 +71,7 @@ The script:
 ### Networking notes
 
 - The debug build's `APP_UPDATE_URL` is hardcoded to
-  `http://192.168.10.233:8080/v1/app/version` in `app/build.gradle.kts`.
+  `http://192.168.10.233:18080/v1/app/version` in `app/build.gradle.kts`.
   If your dev Mac's LAN IP isn't 192.168.10.233, change that value (and
   update `network_security_config.xml` if needed) or run the script
   with `--host` matching the build config.
@@ -86,7 +87,7 @@ The script:
 
 **STB never sees the update.** Confirm the STB can reach the dev Mac:
 ```bash
-adb shell curl -v http://192.168.10.233:8080/v1/app/version
+adb shell curl -v http://192.168.10.233:18080/v1/app/version
 ```
 If that fails, the STB and dev Mac aren't on the same subnet, or the
 debug build's URL doesn't match your Mac's IP.

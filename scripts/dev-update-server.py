@@ -48,9 +48,9 @@ Routes served:
     GET /v1/app/version              — the manifest JSON
     GET /v1/app/download/<file>      — the APK bytes
 
-The debug build's APP_UPDATE_URL is `http://192.168.10.233:8080/v1/app/version`
+The debug build's APP_UPDATE_URL is `http://192.168.10.233:18080/v1/app/version`
 (set in app/build.gradle.kts). Make sure this script binds to that IP
-and port — pass `--host 192.168.10.233 --port 8080` if auto-detect
+and port — pass `--host 192.168.10.233 --port 18080` if auto-detect
 picks a different interface.
 
 Integrity:
@@ -285,7 +285,10 @@ def main() -> int:
         description=__doc__,
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
-    p.add_argument("--port", type=int, default=8080)
+    p.add_argument("--port", type=int, default=18080,
+                   help="Listen port. Matches the debug build's hardcoded "
+                        "APP_UPDATE_URL (default: 18080 — chosen to avoid "
+                        "the very common :8080 clash with Docker/OrbStack/etc).")
     p.add_argument("--host", default=None,
                    help="LAN IP the manifest's apkUrl points at "
                         "(auto-detected if omitted).")

@@ -69,11 +69,10 @@ android {
 
     buildTypes {
         debug {
-            // Dev backend lives on port 18080 (not the common :8080) to
-            // avoid clashes with Docker/OrbStack/etc. on the dev Mac.
-            // scripts/dev-update-server.py defaults to the same port.
-            buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:18080/v1/cert-config\"")
-            buildConfigField("String", "APP_UPDATE_URL", "\"http://192.168.10.233:18080/v1/app/version\"")
+            // Dev backend (docker-compose) listens on :8080 of the dev Mac.
+            // STB hits it directly over LAN, e.g. http://192.168.10.233:8080.
+            buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:8080/v1/cert-config\"")
+            buildConfigField("String", "APP_UPDATE_URL", "\"http://192.168.10.233:8080/v1/app/version\"")
             buildConfigField("String", "APP_SIGNING_CERT_SHA256", "\"\"")
         }
         release {

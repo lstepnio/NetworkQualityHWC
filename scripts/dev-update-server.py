@@ -11,17 +11,31 @@ you exercise the exact code path that will run in the field.
 
 Usage:
 
-    # First iteration of a session (rebuild + serve)
+    # Once per session (long-running listener — leave it up)
+    python3 scripts/dev-update-server.py --no-build
+
+    # Per iteration in a second shell (build, write files, exit — the
+    # running listener picks the new manifest + APK up on the next GET)
+    python3 scripts/dev-update-server.py --no-serve --bump
+
+    # One-shot (build + write + serve in a single process — convenient
+    # for the very first session bring-up; cannot iterate without a kill)
     python3 scripts/dev-update-server.py --bump
 
-    # Subsequent iterations (re-bump versionCode, rebuild, re-serve)
-    python3 scripts/dev-update-server.py --bump
+    # Make the update advisory rather than forced
+    python3 scripts/dev-update-server.py --no-serve --bump --optional
 
-    # Already built? just serve.
-    python3 scripts/dev-update-server.py --serve-only
+Versioning (aligned with the dashboard's release-catalog scheme):
+    code 100  → 0.1.00-dev
+    code 103  → 0.1.03-dev    (dashboard's last release)
+    code 104  → 0.1.04-dev    (first bump produced by this script)
+    code 1NN  → 0.1.NN-dev
 
-    # Make the update optional rather than forced
-    python3 scripts/dev-update-server.py --bump --optional
+State across runs lives in scripts/.dev-update-state.json — `--bump`
+increments the code monotonically. If the state file still holds a
+legacy 4-digit code (e.g. 1003 from before alignment), the next bump
+resets to 104 and the STB needs one `adb install -r -d <apk>` to cross
+the band (the OS rejects normal installs that lower the versionCode).
 
 Bootstrap (one-time per STB, after you pull a branch that adds the
 self-update client for the first time):
@@ -128,16 +142,43 @@ def find_apksigner() -> str | None:
 # Build + hash
 # ──────────────────────────────────────────────────────────────────────
 
+# Aligned with the dashboard's release-catalog scheme:
+#   code 100 → 0.1.00-dev
+#   code 103 → 0.1.03-dev   ← dashboard's last release
+#   code 104 → 0.1.04-dev   ← first dev-script bump
+#   code 199 → 0.1.99-dev
+# When dev iteration produces version strings indistinguishable from
+# what the dashboard would assign, the eventual hand-off to the real
+# backend doesn't require changing how anyone reads the version.
+DASHBOARD_INITIAL_CODE = 104
+
+
+def version_name_for_code(code: int) -> str:
+    """Mirror the dashboard's naming scheme (code 1XX → 0.1.XX-dev)."""
+    if 100 <= code < 1000:
+        patch = code - 100
+        return f"0.1.{patch:02d}-dev"
+    # Defensive: anything outside the dashboard band gets a labelled
+    # name so it's obvious in logs / UI that something's off.
+    return f"0.0.0-dev.{code}"
+
+
 def bump_version_state() -> tuple[int, str]:
     """Returns (versionCode, versionName) for the next build."""
+    new_code = DASHBOARD_INITIAL_CODE
     if VERSION_STATE_FILE.exists():
         state = json.loads(VERSION_STATE_FILE.read_text())
-    else:
-        state = {"code": 1000}
-    state["code"] = int(state.get("code", 1000)) + 1
-    # Synthesise a versionName like "0.0.0-dev.1001" so the STB UI
-    # surfaces something distinguishable per build.
-    state["name"] = f"0.0.0-dev.{state['code']}"
+        prev_code = int(state.get("code", DASHBOARD_INITIAL_CODE - 1))
+        if prev_code >= 1000:
+            # Legacy 4-digit scheme (e.g. 1003) — reset to the dashboard
+            # alignment. The STB will need a downgrade-allowed install
+            # (adb install -r -d) once to cross the band.
+            print(f"!! state at code={prev_code} predates the dashboard alignment; "
+                  f"resetting to {DASHBOARD_INITIAL_CODE}", file=sys.stderr)
+            new_code = DASHBOARD_INITIAL_CODE
+        else:
+            new_code = prev_code + 1
+    state = {"code": new_code, "name": version_name_for_code(new_code)}
     VERSION_STATE_FILE.write_text(json.dumps(state, indent=2))
     return state["code"], state["name"]
 
@@ -145,8 +186,11 @@ def bump_version_state() -> tuple[int, str]:
 def current_version_state() -> tuple[int, str]:
     if VERSION_STATE_FILE.exists():
         state = json.loads(VERSION_STATE_FILE.read_text())
-        return state["code"], state.get("name", f"0.0.0-dev.{state['code']}")
-    return 1, "0.0.0-local"
+        code = int(state.get("code", DASHBOARD_INITIAL_CODE))
+        if code >= 1000:
+            return DASHBOARD_INITIAL_CODE, version_name_for_code(DASHBOARD_INITIAL_CODE)
+        return code, state.get("name", version_name_for_code(code))
+    return DASHBOARD_INITIAL_CODE, version_name_for_code(DASHBOARD_INITIAL_CODE)
 
 
 def build_apk(version_code: int, version_name: str) -> None:
@@ -293,9 +337,17 @@ def main() -> int:
                    help="LAN IP the manifest's apkUrl points at "
                         "(auto-detected if omitted).")
     p.add_argument("--bump", action="store_true",
-                   help="Bump versionCode and rebuild the APK before serving.")
+                   help="Bump versionCode before publishing.")
+    p.add_argument("--no-build", action="store_true",
+                   help="Skip the Gradle build + manifest write — just run the "
+                        "server against whatever's already in scripts/.serve-root/. "
+                        "Use this for the long-running serve process during a session.")
+    p.add_argument("--no-serve", action="store_true",
+                   help="Build + write the manifest + APK, then exit (don't run "
+                        "the server). Use this to push a new version against an "
+                        "already-running --no-build server in another shell.")
     p.add_argument("--serve-only", action="store_true",
-                   help="Skip the build step; serve whatever's in app/build/outputs/.")
+                   help=argparse.SUPPRESS)  # deprecated alias for --no-build
     p.add_argument("--optional", action="store_true",
                    help="Update is advisory — keeps minRequired at 1 so the "
                         "cert button isn't blocked. Default: forced "
@@ -304,54 +356,76 @@ def main() -> int:
                    help="releaseNotes string in the manifest (default: 'dev build').")
     args = p.parse_args()
 
+    do_build = not (args.no_build or args.serve_only)
+    do_serve = not args.no_serve
+
     if args.bump:
         code, name = bump_version_state()
     else:
         code, name = current_version_state()
 
-    if not args.serve_only:
+    # Build + write only when do_build (i.e., we're publishing). The
+    # --no-build path serves whatever the prior --no-serve invocation
+    # staged into SERVE_ROOT.
+    if do_build:
         build_apk(code, name)
 
-    if not APK_PATH.exists():
-        print(f"!! APK not found at {APK_PATH}.", file=sys.stderr)
-        print("   Run with --bump (or remove --serve-only) so the script builds it.",
-              file=sys.stderr)
+        if not APK_PATH.exists():
+            print(f"!! APK not found at {APK_PATH} after build.", file=sys.stderr)
+            return 1
+
+        host = args.host or detect_local_ip()
+        apk_size = APK_PATH.stat().st_size
+        apk_sha = sha256_file(APK_PATH)
+        sig_sha = signing_cert_sha256(APK_PATH)
+        apk_filename = f"app-debug-{code}.apk"
+
+        # Stage the serve directory shaped like the production API tree.
+        # The running --no-build server picks the new files up on the
+        # next request — no restart, no race because http.server reads
+        # the file at request time.
+        SERVE_ROOT.mkdir(parents=True, exist_ok=True)
+        download_dir = SERVE_ROOT / "v1" / "app" / "download"
+        download_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(APK_PATH, download_dir / apk_filename)
+
+        min_required = code if not args.optional else 1
+        write_manifest(
+            SERVE_ROOT,
+            version_code=code, version_name=name,
+            apk_filename=apk_filename, apk_size=apk_size, apk_sha=apk_sha,
+            sig_sha=sig_sha, host=host, port=args.port,
+            min_required=min_required, release_notes=args.notes,
+        )
+
+        print()
+        print(f"==> published")
+        print(f"    serve root          : {SERVE_ROOT}")
+        print(f"    manifest URL        : http://{host}:{args.port}/v1/app/version")
+        print(f"    apk URL             : http://{host}:{args.port}/v1/app/download/{apk_filename}")
+        print(f"    versionCode         : {code}")
+        print(f"    versionName         : {name}")
+        print(f"    minRequired         : {min_required}  ({'FORCED' if not args.optional else 'optional'})")
+        print(f"    apkSize             : {apk_size:,} bytes")
+        print(f"    apkSha256           : {apk_sha}")
+        print(f"    signingCertSha256   : {sig_sha}")
+
+    if not do_serve:
+        return 0
+
+    # Serving phase. Sanity-check the serve root has been populated by
+    # some previous publish — if --no-build is set and nothing's there,
+    # bail with a clear message rather than serving 404s forever.
+    manifest_path = SERVE_ROOT / "v1" / "app" / "version"
+    if not manifest_path.exists():
+        print(f"!! no manifest at {manifest_path}; nothing to serve.", file=sys.stderr)
+        print("   Run once without --no-build (or with --no-serve in another shell) "
+              "to publish first.", file=sys.stderr)
         return 1
 
-    host = args.host or detect_local_ip()
-    apk_size = APK_PATH.stat().st_size
-    apk_sha = sha256_file(APK_PATH)
-    sig_sha = signing_cert_sha256(APK_PATH)
-    apk_filename = f"app-debug-{code}.apk"
-
-    # Stage the serve directory shaped like the production API tree.
-    SERVE_ROOT.mkdir(parents=True, exist_ok=True)
-    download_dir = SERVE_ROOT / "v1" / "app" / "download"
-    download_dir.mkdir(parents=True, exist_ok=True)
-    # Cheap copy — APK is ~12 MB, no need to symlink (which http.server
-    # doesn't follow by default on some Python builds).
-    shutil.copyfile(APK_PATH, download_dir / apk_filename)
-
-    min_required = code if not args.optional else 1
-    manifest = write_manifest(
-        SERVE_ROOT,
-        version_code=code, version_name=name,
-        apk_filename=apk_filename, apk_size=apk_size, apk_sha=apk_sha,
-        sig_sha=sig_sha, host=host, port=args.port,
-        min_required=min_required, release_notes=args.notes,
-    )
-
     print()
-    print(f"==> ready")
-    print(f"    serve root          : {SERVE_ROOT}")
-    print(f"    manifest URL        : http://{host}:{args.port}/v1/app/version")
-    print(f"    apk URL             : http://{host}:{args.port}/v1/app/download/{apk_filename}")
-    print(f"    versionCode         : {code}")
-    print(f"    versionName         : {name}")
-    print(f"    minRequired         : {min_required}  ({'FORCED' if not args.optional else 'optional'})")
-    print(f"    apkSize             : {apk_size:,} bytes")
-    print(f"    apkSha256           : {apk_sha}")
-    print(f"    signingCertSha256   : {sig_sha}")
+    print(f"==> serving {SERVE_ROOT} on :{args.port}")
+    print(f"    manifest URL        : http://{args.host or detect_local_ip()}:{args.port}/v1/app/version")
     print()
     print("Press Ctrl+C to stop.")
     print()

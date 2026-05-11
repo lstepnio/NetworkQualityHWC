@@ -3,6 +3,7 @@ package com.hotwire.fisiontv.networkqual
 import android.content.Context
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaRuntime
+import com.hotwire.fisiontv.networkqual.config.EndpointOverrides
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigProvider
 import com.hotwire.fisiontv.networkqual.data.AppDatabase
 import com.hotwire.fisiontv.networkqual.diagnostics.DeviceIdentityCollector
@@ -57,7 +58,11 @@ class AppContainer(context: Context) {
     val ooklaRuntime: OoklaRuntime by lazy { OoklaRuntime(applicationContext) }
 
     private val certConfigClient: CertConfigClient = OkHttpCertConfigClient(
-        endpoint = BuildConfig.CERT_CONFIG_URL,
+        endpoint = EndpointOverrides.resolve(
+            applicationContext,
+            EndpointOverrides.KEY_CERT_CONFIG_URL,
+            BuildConfig.CERT_CONFIG_URL
+        ),
         authProvider = NoAuthProvider,
         deviceId = DeviceIdentityCollector.deviceId(applicationContext),
         appVersion = BuildConfig.VERSION_NAME
@@ -65,7 +70,11 @@ class AppContainer(context: Context) {
 
     // ── App self-update plumbing ────────────────────────────────────────
     private val updateClient: AppUpdateClient = OkHttpAppUpdateClient(
-        endpoint = BuildConfig.APP_UPDATE_URL,
+        endpoint = EndpointOverrides.resolve(
+            applicationContext,
+            EndpointOverrides.KEY_APP_UPDATE_URL,
+            BuildConfig.APP_UPDATE_URL
+        ),
         authProvider = NoAuthProvider,
         deviceId = DeviceIdentityCollector.deviceId(applicationContext),
         appVersion = BuildConfig.VERSION_NAME,

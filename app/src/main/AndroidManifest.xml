@@ -64,5 +64,22 @@
                 <action android:name="com.hotwire.fisiontv.networkqual.update.INSTALL_RESULT" />
             </intent-filter>
         </receiver>
+
+        <!--
+            Re-launches MainActivity after the OS replaces our APK
+            (post-self-update). Without this, the install-commit kills
+            the old process and the device sits at the launcher until
+            the tech manually re-opens us — wiping the value of the
+            resume-cert-after-update flow. The broadcast is protected
+            (system-sent) and delivered ONLY to the package being
+            replaced, so exported="true" is required + safe.
+        -->
+        <receiver
+            android:name=".update.PackageReplacedReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

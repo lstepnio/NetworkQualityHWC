@@ -53,6 +53,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val frac: Float? = null
         ) : UiState
 
+        /**
+         * The backend has an app-version manifest newer than the
+         * installed STB build, and the cert button is blocked until the
+         * STB has actually upgraded to it. We refuse to run a cert on a
+         * stale client because (a) it would mis-tag results with the old
+         * versionCode in the dashboard and (b) it bypasses the whole
+         * point of having a server-driven release pipeline.
+         *
+         * Entered either:
+         *  - proactively, from [Idle] when the launch-time manifest
+         *    refresh discovers a newer version; or
+         *  - after a pre-cert install attempt fails terminally (verify
+         *    rejected, install refused, retries exhausted) — `reason`
+         *    carries the OS-provided cause so the tech knows what to
+         *    fix.
+         *
+         * Exit paths:
+         *  - successful install → OS replaces the process, the new boot
+         *    sees no pending update, state goes to [Idle].
+         *  - tech taps "Retry" → re-runs the update attempt.
+         */
+        data class UpdateRequired(
+            val targetVersionName: String,
+            val targetVersionCode: Int,
+            val reason: String? = null
+        ) : UiState
+
         data class Running(
             val currentStep: TestStep,
             val stepFrac: Float,
@@ -102,45 +129,103 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             Log.i(TAG, "resuming cert after successful update install")
             startCertification()
         }
+
+        // Proactively gate the cert button when the launch-time
+        // manifest refresh reveals a newer version. Without this, the
+        // tech sees "Run certification" on the start screen and only
+        // discovers the pending update mid-tap. We transition Idle →
+        // UpdateRequired the moment we know an upgrade is needed; the
+        // tech sees "Update required" instead and the cert button is
+        // gone. See issue #45.
+        viewModelScope.launch {
+            container.manifest
+                .filterNotNull()
+                .collect { manifest ->
+                    if (manifest.latestVersionCode > container.installedVersionCode &&
+                        _state.value is UiState.Idle
+                    ) {
+                        Log.i(
+                            TAG,
+                            "manifest observer: blocking cert — installed ${container.installedVersionCode} < latest ${manifest.latestVersionCode}"
+                        )
+                        _state.value = UiState.UpdateRequired(
+                            targetVersionName = manifest.latestVersionName,
+                            targetVersionCode = manifest.latestVersionCode
+                        )
+                    }
+                }
+        }
     }
 
     /**
-     * Tech-facing entry point for "I want a cert". Always tries to update
-     * before running so the cert reflects the latest tier thresholds,
-     * server list, etc. If the update can't complete (network failure,
-     * integrity rejection, etc.) the cert runs on the installed version
-     * anyway — "ultimately still run the certification and post the
-     * results" beats "blocked in the field".
+     * Tech-facing entry point for "I want a cert".
+     *
+     * Always tries to update before running so the cert reflects the
+     * latest tier thresholds, server list, etc. **If the update can't
+     * complete** (network failure, integrity rejection, install
+     * rejected by the OS) the cert is **blocked**, not silently run on
+     * the installed version — running a cert on a stale client
+     * mis-tags results in the dashboard and defeats the point of a
+     * server-driven release pipeline. The UI transitions to
+     * [UiState.UpdateRequired] with the OS-provided reason, and the
+     * tech can re-attempt via [retryUpdate].
      */
     fun startCertification() {
         if (runJob?.isActive == true) return
         runJob = viewModelScope.launch {
-            // Phase 1: refresh manifest, apply update if newer.
-            if (!preCertUpdate()) {
-                // Install was committed — the OS will replace this
-                // process imminently. The resume flag is set; the new
-                // process's init will see it and re-fire startCertification
-                // on the new version. We stay in Preparing.Installing
-                // until the OS kills us.
-                awaitCancellation()
+            when (preCertUpdate()) {
+                PreCertOutcome.Proceed -> runCertEngine()
+                PreCertOutcome.AwaitSwap -> {
+                    // Install was committed — the OS will replace this
+                    // process imminently. The resume flag is set; the new
+                    // process's init will see it and re-fire startCertification
+                    // on the new version. We stay in Preparing
+                    // until the OS kills us.
+                    awaitCancellation()
+                }
+                PreCertOutcome.Blocked -> {
+                    // preCertUpdate already set _state to UpdateRequired
+                    // with the failure reason. Nothing to do — let the
+                    // tech see the block and choose retryUpdate().
+                }
             }
-            // Phase 2: run the actual cert.
-            runCertEngine()
         }
+    }
+
+    /**
+     * Re-attempt the pre-cert update flow after a previous attempt
+     * landed in [UiState.UpdateRequired] with a non-null reason. No-op
+     * if a cert / update job is already running.
+     */
+    fun retryUpdate() {
+        if (runJob?.isActive == true) return
+        startCertification()
+    }
+
+    private enum class PreCertOutcome {
+        /** No update needed (or no manifest reachable). Run the cert. */
+        Proceed,
+        /** Install was committed; OS swap is imminent. Park and wait. */
+        AwaitSwap,
+        /** Update needed but couldn't be applied. UI is in UpdateRequired. */
+        Blocked,
     }
 
     /**
      * Refresh the manifest, then — if a newer version exists — try to
      * download + verify + install it before the cert.
      *
-     * Returns `true` when the cert should proceed in this process
-     * (no update needed, or update failed and we're falling through).
-     * Returns `false` when the install committed — the caller should
-     * NOT start the cert; the OS will replace the process and the new
-     * boot's resume flag will re-trigger startCertification on the new
-     * version.
+     * - [PreCertOutcome.Proceed]: no update needed (or manifest fetch
+     *   failed; we don't penalize the cert for a backend hiccup). Caller
+     *   runs the cert.
+     * - [PreCertOutcome.AwaitSwap]: the install was committed. Caller
+     *   awaits cancellation — the OS will replace the process and the
+     *   resume flag will re-fire startCertification on the new version.
+     * - [PreCertOutcome.Blocked]: an update was needed but the attempt
+     *   failed terminally. `_state` has been set to
+     *   [UiState.UpdateRequired] with the cause. The cert MUST NOT run.
      */
-    private suspend fun preCertUpdate(): Boolean {
+    private suspend fun preCertUpdate(): PreCertOutcome {
         // Intentionally NOT setting a "Checking for updates" Preparing
         // state here. With ETag the manifest fetch is a sub-200 ms 304
         // in the common case — long enough to flash visibly but far
@@ -165,18 +250,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val manifest = container.manifest.value
         if (manifest == null) {
             Log.w(TAG, "pre-cert: no manifest available; proceeding with installed version")
-            return true
+            return PreCertOutcome.Proceed
         }
         if (manifest.latestVersionCode <= container.installedVersionCode) {
             Log.i(TAG, "pre-cert: installed (${container.installedVersionCode}) >= latest (${manifest.latestVersionCode}); no update needed")
-            return true
+            return PreCertOutcome.Proceed
         }
 
         Log.i(TAG, "pre-cert: update available v${manifest.latestVersionName} (code ${manifest.latestVersionCode}); applying before cert")
         return runPreCertUpdate(manifest)
     }
 
-    private suspend fun runPreCertUpdate(manifest: AppVersionManifest): Boolean {
+    private suspend fun runPreCertUpdate(manifest: AppVersionManifest): PreCertOutcome {
         val maxAttempts = 2
         val backoffMs = 5_000L
 
@@ -187,8 +272,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     // Install was committed. Set the resume flag so the
                     // post-swap process auto-fires startCertification, then
                     // park the UI in "Installing…" — either the OS replaces
-                    // us (success), or the user cancels the system dialog
-                    // (we fall through and run the cert on this version).
+                    // us (success), or the install fails and we block
+                    // the cert with the OS-provided reason.
                     app.markResumeCertAfterUpdate(manifest.latestVersionCode)
                     _state.value = UiState.Preparing(
                         title = "Installing update v${manifest.latestVersionName}",
@@ -198,24 +283,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         it is InstallStatus.Success || it is InstallStatus.Failed
                     }
                     return when (terminal) {
-                        is InstallStatus.Success -> false  // caller awaits OS swap
+                        is InstallStatus.Success -> PreCertOutcome.AwaitSwap
                         is InstallStatus.Failed -> {
                             Log.w(TAG, "pre-cert install failed post-commit: ${terminal.reason}")
                             app.clearResumeCertAfterUpdate()
-                            true  // fall through to cert
+                            blockOnUpdate(manifest, terminal.reason)
                         }
-                        else -> true
+                        else -> blockOnUpdate(manifest, "unexpected installer state")
                     }
                 }
                 UpdateAttempt.Permanent -> {
-                    Log.w(TAG, "pre-cert update permanent failure; proceeding with cert on installed version")
-                    return true
+                    Log.w(TAG, "pre-cert update permanent failure; blocking cert")
+                    return blockOnUpdate(manifest, "Update could not be applied. Verify the manifest's APK URL, hash, and signing-cert pin.")
                 }
                 is UpdateAttempt.Transient -> {
                     val isLast = attempt >= maxAttempts - 1
                     if (isLast) {
-                        Log.w(TAG, "pre-cert update exhausted retries (${r.cause}); proceeding with cert")
-                        return true
+                        Log.w(TAG, "pre-cert update exhausted retries (${r.cause}); blocking cert")
+                        return blockOnUpdate(manifest, r.cause)
                     }
                     Log.w(TAG, "pre-cert update transient (${r.cause}); retrying in ${backoffMs}ms")
                     _state.value = UiState.Preparing(
@@ -226,7 +311,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        return true
+        return blockOnUpdate(manifest, "Update retries exhausted.")
+    }
+
+    private fun blockOnUpdate(manifest: AppVersionManifest, reason: String): PreCertOutcome {
+        _state.value = UiState.UpdateRequired(
+            targetVersionName = manifest.latestVersionName,
+            targetVersionCode = manifest.latestVersionCode,
+            reason = reason
+        )
+        return PreCertOutcome.Blocked
     }
 
     private suspend fun attemptUpdate(manifest: AppVersionManifest): UpdateAttempt {

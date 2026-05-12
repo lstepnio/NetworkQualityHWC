@@ -23,6 +23,12 @@ fun AppRoot(viewModel: MainViewModel) {
             MainViewModel.UiState.Idle -> StartScreen(
                 onStart = { viewModel.startCertification() }
             )
+            is MainViewModel.UiState.UpdateRequired -> UpdateRequiredScreen(
+                targetVersionName = s.targetVersionName,
+                targetVersionCode = s.targetVersionCode,
+                reason = s.reason,
+                onRetry = { viewModel.retryUpdate() }
+            )
             is MainViewModel.UiState.Preparing -> PreparingScreen(
                 title = s.title,
                 subtitle = s.subtitle,

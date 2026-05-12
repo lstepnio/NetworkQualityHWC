@@ -53,7 +53,16 @@ class OoklaSpeedtestRunner(
                 runtime.binaryPath,
                 "-c", configUrl,
                 "--ca-certificate", runtime.caBundlePath,
-                "-f", "jsonl"
+                "-f", "jsonl",
+                // Force the binary to ping each server in the embed pool
+                // and pick the one with lowest latency. Without this flag
+                // it picks the FIRST server in the embed-config response,
+                // which is order-of-list — not lowest-latency. We caught
+                // this in the field: a Florida lab was consistently being
+                // routed to Dallas (188ms) instead of Miami (77ms),
+                // driving large download-throughput variance run-to-run.
+                // The flag adds <1s of probing per cert; well worth it.
+                "--selection-details"
             ).redirectErrorStream(true).start()
         } catch (t: Throwable) {
             trySend(OoklaEvent.Failed("spawn: ${t::class.simpleName}: ${t.message}"))

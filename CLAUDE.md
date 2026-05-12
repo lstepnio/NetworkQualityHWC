@@ -64,3 +64,9 @@ The debug build points at `http://192.168.10.233:18080/v1/...` (the dev Mac's Do
 5. After install, `MainActivity` is re-launched at the new versionCode.
 
 If anything fails (parse, hash mismatch, install rejection) → `AppUpdateFetchOutcome.Error` or installer state machine surfaces error; the cert run proceeds anyway on the installed version. Don't block the cert on update failure.
+
+## Lifecycle: Home-press mid-cert is safe
+
+Verified on the lab STB (Amlogic SEI800HW, Android 12): pressing HOME during the SPEEDTEST phase does **not** kill the cert. The activity stops, the process stays alive, the `viewModelScope`-scoped engine coroutine runs to completion, `CertificationEngine: complete` fires, `PublishQueue` enqueues and drains. The row lands in the backend while the app is in the background. Re-entry via the TV launcher brings the existing task to the front with `UiState.Done` preserved — tech sees the Results screen.
+
+Net: no Foreground Service is needed for the current scope. If we later add a workload that runs longer than ~2 min in the background (where Android may reclaim the process more aggressively), revisit. For 30-60 s certs on a tech-supervised flow, the current posture is correct.

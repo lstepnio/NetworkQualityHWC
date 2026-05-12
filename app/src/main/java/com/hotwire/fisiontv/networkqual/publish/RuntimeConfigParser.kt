@@ -1,8 +1,8 @@
 package com.hotwire.fisiontv.networkqual.publish
 
+import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.Tier
 import com.hotwire.fisiontv.networkqual.cert.TierThreshold
-import com.hotwire.fisiontv.networkqual.config.HealthAssessmentConfig
 import com.hotwire.fisiontv.networkqual.config.LatencyPhaseConfig
 import com.hotwire.fisiontv.networkqual.config.OoklaServer
 import com.hotwire.fisiontv.networkqual.config.PlaybackPhaseConfig
@@ -11,38 +11,52 @@ import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigDefaults
 import com.hotwire.fisiontv.networkqual.config.TestsConfig
 import com.hotwire.fisiontv.networkqual.config.ThroughputPhaseConfig
-import com.hotwire.fisiontv.networkqual.config.WifiLinkQualityConfig
 import org.json.JSONArray
 import org.json.JSONObject
 
 /**
  * Parses the JSON body of GET /v1/cert-config into a [RuntimeConfig].
  *
- * Validation is mostly handled by [RuntimeConfig]'s `init` blocks — this
- * class just maps fields. Missing optional fields fall back to the value
- * in [RuntimeConfigDefaults.bundled] so adding a new field server-side
- * doesn't immediately break older clients.
+ * Parser is **per-field tolerant**: a single bad field (e.g. a dashboard
+ * mistake that ships `playback.durationSec=1`) does not invalidate the
+ * whole config. Out-of-range or missing fields fall back to the value
+ * from [RuntimeConfigDefaults.bundled] with a logged warning.
  *
- * Health and Wi-Fi assessment configs are not (yet) part of the public
- * cert-config schema; they're inherited from bundled defaults until the
- * spec adds them.
+ * The critical invariant: `uploadResults` is parsed first and in
+ * isolation, so the kill switch (`enabled=false`) is honored even when
+ * everything else fails to parse.
+ *
+ * Hard failures still throw: `tiers` missing entirely or containing an
+ * unknown id, `servers` empty, top-level JSON malformed. Those break
+ * certification too fundamentally for fallback to be safe — the engine
+ * needs the bundled defaults wholesale in that case, and the caller in
+ * [OkHttpCertConfigClient] catches the throw and keeps the bundled
+ * config.
  */
 object RuntimeConfigParser {
+
+    private const val TAG = "RuntimeConfigParser"
 
     fun parse(json: String): RuntimeConfig = parse(JSONObject(json))
 
     fun parse(o: JSONObject): RuntimeConfig {
         val defaults = RuntimeConfigDefaults.bundled
+
+        // Parse the kill switch FIRST and in isolation. If everything
+        // else fails, the operator's `enabled=false` MUST still take
+        // effect — that's the entire reason the kill switch exists.
+        val publishing = parsePublishingSafe(o.optJSONObject("uploadResults"))
+
         return RuntimeConfig(
-            schemaVersion = o.getInt("schemaVersion"),
-            configVersion = o.getString("configVersion"),
+            schemaVersion = o.optInt("schemaVersion", defaults.schemaVersion),
+            configVersion = o.optString("configVersion").ifBlank { defaults.configVersion },
             servers = o.getJSONArray("servers").mapTo(::parseServer),
-            tests = parseTests(o.getJSONObject("tests")),
+            tests = parseTests(o.optJSONObject("tests"), defaults.tests),
             tiers = o.getJSONArray("tiers").mapTo(::parseTier),
             dnsProbeHosts = o.optJSONArray("dnsProbeHosts")?.toStringList() ?: defaults.dnsProbeHosts,
             healthAssessment = defaults.healthAssessment,
             wifiLinkQuality = defaults.wifiLinkQuality,
-            resultsPublishing = parsePublishing(o.optJSONObject("uploadResults")),
+            resultsPublishing = publishing,
             ooklaConfigUrl = o.optString("ooklaConfigUrl").ifBlank { defaults.ooklaConfigUrl }
         )
     }
@@ -55,29 +69,79 @@ object RuntimeConfigParser {
         secure = o.optBoolean("secure", true)
     )
 
-    private fun parseTests(o: JSONObject) = TestsConfig(
-        download = parseThroughput(o.getJSONObject("download")),
-        upload = parseThroughput(o.getJSONObject("upload")),
-        latency = parseLatency(o.getJSONObject("latency")),
-        playback = parsePlayback(o.getJSONObject("playback"))
-    )
+    private fun parseTests(o: JSONObject?, defaults: TestsConfig): TestsConfig {
+        if (o == null) {
+            Log.w(TAG, "tests section missing; using bundled defaults")
+            return defaults
+        }
+        return TestsConfig(
+            download = parseThroughputSafe(o.optJSONObject("download"), defaults.download, "download"),
+            upload = parseThroughputSafe(o.optJSONObject("upload"), defaults.upload, "upload"),
+            latency = parseLatencySafe(o.optJSONObject("latency"), defaults.latency),
+            playback = parsePlaybackSafe(o.optJSONObject("playback"), defaults.playback)
+        )
+    }
 
-    private fun parseThroughput(o: JSONObject) = ThroughputPhaseConfig(
-        durationSec = o.getInt("durationSec"),
-        parallel = o.getInt("parallel"),
-        perRequestBytes = o.getLong("perRequestBytes"),
-        warmupFraction = o.getDouble("warmupFraction")
-    )
+    private fun parseThroughputSafe(
+        o: JSONObject?,
+        fallback: ThroughputPhaseConfig,
+        label: String
+    ): ThroughputPhaseConfig {
+        if (o == null) {
+            Log.w(TAG, "tests.$label missing; using bundled defaults")
+            return fallback
+        }
+        val ctx = "tests.$label"
+        return try {
+            ThroughputPhaseConfig(
+                durationSec = clampInt(o, "durationSec", fallback.durationSec, 1..120, ctx),
+                parallel = clampInt(o, "parallel", fallback.parallel, 1..16, ctx),
+                perRequestBytes = clampLong(o, "perRequestBytes", fallback.perRequestBytes, 1_000_000L..2_000_000_000L, ctx),
+                warmupFraction = clampDouble(o, "warmupFraction", fallback.warmupFraction, 0.0..0.9, ctx)
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")
+            fallback
+        }
+    }
 
-    private fun parseLatency(o: JSONObject) = LatencyPhaseConfig(
-        samples = o.getInt("samples"),
-        timeoutMs = o.optInt("timeoutMs", 2000)
-    )
+    private fun parseLatencySafe(o: JSONObject?, fallback: LatencyPhaseConfig): LatencyPhaseConfig {
+        if (o == null) {
+            Log.w(TAG, "tests.latency missing; using bundled defaults")
+            return fallback
+        }
+        val ctx = "tests.latency"
+        return try {
+            LatencyPhaseConfig(
+                samples = clampInt(o, "samples", fallback.samples, 3..100, ctx),
+                timeoutMs = clampInt(o, "timeoutMs", fallback.timeoutMs, 100..30_000, ctx)
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")
+            fallback
+        }
+    }
 
-    private fun parsePlayback(o: JSONObject) = PlaybackPhaseConfig(
-        manifestUrl = o.getString("manifestUrl"),
-        durationSec = o.getInt("durationSec")
-    )
+    private fun parsePlaybackSafe(o: JSONObject?, fallback: PlaybackPhaseConfig): PlaybackPhaseConfig {
+        if (o == null) {
+            Log.w(TAG, "tests.playback missing; using bundled defaults")
+            return fallback
+        }
+        val ctx = "tests.playback"
+        return try {
+            val manifestUrl = o.optString("manifestUrl").ifBlank {
+                Log.w(TAG, "$ctx.manifestUrl missing/blank; using bundled ${fallback.manifestUrl}")
+                fallback.manifestUrl
+            }
+            PlaybackPhaseConfig(
+                manifestUrl = manifestUrl,
+                durationSec = clampInt(o, "durationSec", fallback.durationSec, 5..120, ctx)
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")
+            fallback
+        }
+    }
 
     private fun parseTier(o: JSONObject): TierThreshold {
         val id = o.getString("id")
@@ -98,12 +162,59 @@ object RuntimeConfigParser {
         )
     }
 
-    private fun parsePublishing(o: JSONObject?): ResultsPublishingConfig {
+    private fun parsePublishingSafe(o: JSONObject?): ResultsPublishingConfig {
         if (o == null) return ResultsPublishingConfig(enabled = false, endpoint = null)
-        return ResultsPublishingConfig(
-            enabled = o.optBoolean("enabled", false),
-            endpoint = if (o.isNull("endpoint")) null else o.optString("endpoint", "").ifEmpty { null }
-        )
+        return try {
+            ResultsPublishingConfig(
+                enabled = o.optBoolean("enabled", false),
+                endpoint = if (o.isNull("endpoint")) null else o.optString("endpoint", "").ifEmpty { null }
+            )
+        } catch (t: Throwable) {
+            // Fail closed: if uploadResults is malformed, treat as kill
+            // switch on. Better to drop results than upload to a wrong
+            // endpoint or DoS some random host because of a typo.
+            Log.w(TAG, "uploadResults parse failed (${t.message}); defaulting to disabled")
+            ResultsPublishingConfig(enabled = false, endpoint = null)
+        }
+    }
+
+    private fun clampInt(o: JSONObject, key: String, fallback: Int, range: IntRange, ctx: String): Int {
+        if (!o.has(key)) {
+            Log.w(TAG, "$ctx.$key missing; using bundled $fallback")
+            return fallback
+        }
+        val v = o.optInt(key, fallback)
+        if (v !in range) {
+            Log.w(TAG, "$ctx.$key=$v out of [${range.first},${range.last}]; using bundled $fallback")
+            return fallback
+        }
+        return v
+    }
+
+    private fun clampLong(o: JSONObject, key: String, fallback: Long, range: LongRange, ctx: String): Long {
+        if (!o.has(key)) {
+            Log.w(TAG, "$ctx.$key missing; using bundled $fallback")
+            return fallback
+        }
+        val v = o.optLong(key, fallback)
+        if (v !in range) {
+            Log.w(TAG, "$ctx.$key=$v out of [${range.first},${range.last}]; using bundled $fallback")
+            return fallback
+        }
+        return v
+    }
+
+    private fun clampDouble(o: JSONObject, key: String, fallback: Double, range: ClosedFloatingPointRange<Double>, ctx: String): Double {
+        if (!o.has(key)) {
+            Log.w(TAG, "$ctx.$key missing; using bundled $fallback")
+            return fallback
+        }
+        val v = o.optDouble(key, fallback)
+        if (v !in range) {
+            Log.w(TAG, "$ctx.$key=$v out of [${range.start},${range.endInclusive}]; using bundled $fallback")
+            return fallback
+        }
+        return v
     }
 
     private fun <T> JSONArray.mapTo(map: (JSONObject) -> T): List<T> =

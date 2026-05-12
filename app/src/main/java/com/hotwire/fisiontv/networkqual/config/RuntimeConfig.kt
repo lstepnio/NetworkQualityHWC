@@ -24,6 +24,18 @@ data class RuntimeConfig(
     val wifiLinkQuality: WifiLinkQualityConfig,
     val resultsPublishing: ResultsPublishingConfig,
     /**
+     * Optional remote kill switch. When [KillswitchConfig.enabled] is
+     * true the app calls `finishAffinity()` on receipt of this config —
+     * no UI surface, no shared-prefs cache, no in-process polling. The
+     * launch path on the next app start re-fetches the active config
+     * and proceeds normally if the switch has flipped off.
+     *
+     * Distinct from [ResultsPublishingConfig.enabled], which only
+     * suppresses POSTing results — under that flag certs still run
+     * locally.
+     */
+    val killswitch: KillswitchConfig = KillswitchConfig(enabled = false),
+    /**
      * Hosted-config URL for the Ookla embedded SDK. The binary fetches
      * the server list + per-phase durations + sample counts from this
      * URL — that's why none of those values live in cert-config
@@ -116,4 +128,17 @@ data class WifiLinkQualityConfig(
 data class ResultsPublishingConfig(
     val enabled: Boolean,
     val endpoint: String?
+)
+
+/**
+ * True killswitch — see [RuntimeConfig.killswitch] for semantics.
+ *
+ * `enabled = false` is the safe default (app runs normally). When
+ * `enabled = true`, the app exits cleanly the moment the config
+ * applies. `reason` is informational only — emitted to logcat at
+ * exit so techs can correlate.
+ */
+data class KillswitchConfig(
+    val enabled: Boolean,
+    val reason: String? = null
 )

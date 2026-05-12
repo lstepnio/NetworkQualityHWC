@@ -4,6 +4,7 @@ import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.Tier
 import com.hotwire.fisiontv.networkqual.cert.TierThreshold
 import com.hotwire.fisiontv.networkqual.config.HealthAssessmentConfig
+import com.hotwire.fisiontv.networkqual.config.KillswitchConfig
 import com.hotwire.fisiontv.networkqual.config.PlaybackPhaseConfig
 import com.hotwire.fisiontv.networkqual.config.ResultsPublishingConfig
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
@@ -61,8 +62,27 @@ object RuntimeConfigParser {
             healthAssessment = parseHealthAssessmentSafe(o.optJSONObject("healthAssessment"), defaults.healthAssessment),
             wifiLinkQuality = parseWifiLinkQualitySafe(o.optJSONObject("wifiLinkQuality"), defaults.wifiLinkQuality),
             resultsPublishing = publishing,
+            killswitch = parseKillswitchSafe(o.optJSONObject("killswitch")),
             ooklaConfigUrl = o.optString("ooklaConfigUrl").ifBlank { defaults.ooklaConfigUrl }
         )
+    }
+
+    /**
+     * Fail closed: a malformed killswitch block defaults to enabled=false
+     * (don't lock people out of their own STBs because of a typo).
+     * Absent block also = disabled.
+     */
+    private fun parseKillswitchSafe(o: JSONObject?): KillswitchConfig {
+        if (o == null) return KillswitchConfig(enabled = false)
+        return try {
+            KillswitchConfig(
+                enabled = o.optBoolean("enabled", false),
+                reason = if (o.isNull("reason")) null else o.optString("reason", "").ifEmpty { null }
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "killswitch parse failed (${t.message}); defaulting to disabled")
+            KillswitchConfig(enabled = false)
+        }
     }
 
     private fun parseTests(o: JSONObject?, defaults: TestsConfig): TestsConfig {

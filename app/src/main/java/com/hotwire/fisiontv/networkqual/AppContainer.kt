@@ -156,18 +156,29 @@ class AppContainer(context: Context) {
         }
     }
 
+    /**
+     * Fetch the active cert-config and apply if changed. Called once at
+     * Application creation (see [init] below) AND from each
+     * [com.hotwire.fisiontv.networkqual.MainActivity.onCreate] so that an
+     * app relaunch always re-asks the backend — necessary for the
+     * killswitch recovery path. Suspends until the fetch resolves so
+     * the caller can act on the freshly-applied config (e.g. exit
+     * cleanly if `killswitch.enabled` is true).
+     */
+    suspend fun refreshCertConfig() {
+        when (val outcome = certConfigClient.fetch()) {
+            is FetchOutcome.Updated -> configProvider.apply(outcome.config)
+            is FetchOutcome.NotModified -> Log.i(TAG, "cert-config 304: keeping cached")
+            is FetchOutcome.Error -> Log.w(TAG, "cert-config fetch failed, using bundled: ${outcome.cause}")
+        }
+    }
+
     init {
         // Kick off a config refresh on launch. The result lands via
         // configProvider.apply() — typically before the user clicks "Run",
         // so the next certification uses the server-side servers + tier
         // thresholds. Any failure is logged and bundled defaults stay.
-        refreshScope.launch {
-            when (val outcome = certConfigClient.fetch()) {
-                is FetchOutcome.Updated -> configProvider.apply(outcome.config)
-                is FetchOutcome.NotModified -> Log.i(TAG, "cert-config 304: keeping cached")
-                is FetchOutcome.Error -> Log.w(TAG, "cert-config fetch failed, using bundled: ${outcome.cause}")
-            }
-        }
+        refreshScope.launch { refreshCertConfig() }
         // Eagerly extract the Ookla CA bundle off the main thread. By
         // the time the user clicks "Run certification" the bundle is
         // already on disk and the first speedtest doesn't pay the

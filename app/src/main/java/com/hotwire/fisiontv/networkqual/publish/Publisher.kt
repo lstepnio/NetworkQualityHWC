@@ -43,18 +43,23 @@ sealed interface FetchOutcome {
 }
 
 /**
- * Provides the bearer token for authenticated requests. The actual token
- * source is decided by the auth strategy (see contract/SPEC.md §5):
- *  - Option A: per-install token issued by /v1/devices/register
- *  - Option B: HMAC-signed timestamp with a build-time shared secret
+ * Produces the `Authorization` header value for a given v1 request.
  *
- * Both strategies plug in here without changing call sites.
+ * Called per request because the HMAC-SHA256 scheme (see contract SPEC §5
+ * and `internal/auth/hmac.go` on the server) signs the (method, path,
+ * deviceId, timestamp, body-hash) tuple — so every call site must hand
+ * in the bytes it is about to POST / the URL it is about to hit. Bodyless
+ * GETs pass an empty array.
+ *
+ * Returning `null` means "send no Authorization header" — used by
+ * [NoAuthProvider] for legacy-passthrough mode while the field fleet
+ * rolls forward.
  */
 fun interface AuthProvider {
-    suspend fun authorizationHeader(): String?
+    suspend fun sign(method: String, path: String, body: ByteArray): String?
 }
 
 /** Auth provider used until the real strategy ships. Returns null. */
 object NoAuthProvider : AuthProvider {
-    override suspend fun authorizationHeader(): String? = null
+    override suspend fun sign(method: String, path: String, body: ByteArray): String? = null
 }

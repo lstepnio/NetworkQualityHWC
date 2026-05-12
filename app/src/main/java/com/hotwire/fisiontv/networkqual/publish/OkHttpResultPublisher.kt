@@ -6,6 +6,7 @@ import com.hotwire.fisiontv.networkqual.cert.CertificationResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -37,9 +38,11 @@ class OkHttpResultPublisher(
 
     suspend fun publish(result: CertificationResult): PublishOutcome =
         withContext(Dispatchers.IO) {
-            val body = CertificationPayload.toJson(result).toString()
-                .toRequestBody("application/json".toMediaType())
-            val authHeader = authProvider.authorizationHeader()
+            val bodyBytes = CertificationPayload.toJson(result).toString()
+                .toByteArray(Charsets.UTF_8)
+            val body = bodyBytes.toRequestBody("application/json".toMediaType())
+            val path = endpoint.toHttpUrl().encodedPath
+            val authHeader = authProvider.sign("POST", path, bodyBytes)
 
             val builder = Request.Builder()
                 .url(endpoint)

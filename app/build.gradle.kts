@@ -55,6 +55,11 @@ android {
     // OS has granted INSTALL_PACKAGES (signature permission, only granted
     // to apps signed with the platform key). No build-time flag.
     val releaseSigningCertSha = System.getenv("KEYSTORE_CERT_SHA256")?.lowercase() ?: ""
+    // Shared secret for HMAC-SHA256 auth on /v1/*. Mirrors the backend's
+    // V1_HMAC_SECRET. Empty in CI means HmacAuthProvider returns null and
+    // the server (in observe-mode) accepts the request anyway. Set via
+    // env in the release workflow once the field fleet is HMAC-aware.
+    val v1HmacSecret = System.getenv("V1_HMAC_SECRET") ?: ""
 
     if (canSignRelease) {
         signingConfigs {
@@ -74,6 +79,11 @@ android {
             buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:8080/v1/cert-config\"")
             buildConfigField("String", "APP_UPDATE_URL", "\"http://192.168.10.233:8080/v1/app/version\"")
             buildConfigField("String", "APP_SIGNING_CERT_SHA256", "\"\"")
+            // Dev STBs and the dev docker-compose ship with this default;
+            // override with V1_HMAC_SECRET env at gradle config time for a
+            // real lab secret.
+            val devSecret = v1HmacSecret.ifEmpty { "dev-hmac-secret-change-me" }
+            buildConfigField("String", "V1_HMAC_SECRET", "\"$devSecret\"")
         }
         release {
             isMinifyEnabled = false
@@ -88,6 +98,7 @@ android {
             buildConfigField("String", "CERT_CONFIG_URL", "\"http://192.168.10.233:8080/v1/cert-config\"")
             buildConfigField("String", "APP_UPDATE_URL", "\"http://192.168.10.233:8080/v1/app/version\"")
             buildConfigField("String", "APP_SIGNING_CERT_SHA256", "\"$releaseSigningCertSha\"")
+            buildConfigField("String", "V1_HMAC_SECRET", "\"$v1HmacSecret\"")
         }
     }
 

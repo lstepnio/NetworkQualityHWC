@@ -8,6 +8,8 @@ import com.hotwire.fisiontv.networkqual.data.AppDatabase
 import com.hotwire.fisiontv.networkqual.diagnostics.DeviceIdentityCollector
 import com.hotwire.fisiontv.networkqual.publish.CertConfigClient
 import com.hotwire.fisiontv.networkqual.publish.FetchOutcome
+import com.hotwire.fisiontv.networkqual.publish.AuthProvider
+import com.hotwire.fisiontv.networkqual.publish.HmacAuthProvider
 import com.hotwire.fisiontv.networkqual.publish.NoAuthProvider
 import com.hotwire.fisiontv.networkqual.publish.OkHttpCertConfigClient
 import com.hotwire.fisiontv.networkqual.publish.OkHttpResultPublisher
@@ -47,7 +49,21 @@ class AppContainer(context: Context) {
 
     val database: AppDatabase = AppDatabase.get(applicationContext)
 
-    val publishQueue: PublishQueue = PublishQueue(database.pendingPublishDao())
+    /**
+     * Per-request HMAC signer for the v1 surface. Falls back to [NoAuthProvider]
+     * when the build-time secret is empty so a debug build without
+     * V1_HMAC_SECRET set still talks to a legacy / observe-mode backend.
+     */
+    private val authProvider: AuthProvider = run {
+        val secret = BuildConfig.V1_HMAC_SECRET
+        if (secret.isEmpty()) NoAuthProvider
+        else HmacAuthProvider(secret, DeviceIdentityCollector.deviceId(applicationContext))
+    }
+
+    val publishQueue: PublishQueue = PublishQueue(
+        dao = database.pendingPublishDao(),
+        send = PublishQueue.okHttpSender(authProvider = authProvider)
+    )
 
     /**
      * Single OoklaRuntime instance for the process. Created lazily and
@@ -59,7 +75,7 @@ class AppContainer(context: Context) {
 
     private val certConfigClient: CertConfigClient = OkHttpCertConfigClient(
         endpoint = BuildConfig.CERT_CONFIG_URL,
-        authProvider = NoAuthProvider,
+        authProvider = authProvider,
         deviceId = DeviceIdentityCollector.deviceId(applicationContext),
         appVersion = BuildConfig.VERSION_NAME,
         // Tight-timeout client: the cert-config fetch is foreground —
@@ -73,7 +89,7 @@ class AppContainer(context: Context) {
     // ── App self-update plumbing ────────────────────────────────────────
     private val updateClient: AppUpdateClient = OkHttpAppUpdateClient(
         endpoint = BuildConfig.APP_UPDATE_URL,
-        authProvider = NoAuthProvider,
+        authProvider = authProvider,
         deviceId = DeviceIdentityCollector.deviceId(applicationContext),
         appVersion = BuildConfig.VERSION_NAME,
         appVersionCode = BuildConfig.VERSION_CODE

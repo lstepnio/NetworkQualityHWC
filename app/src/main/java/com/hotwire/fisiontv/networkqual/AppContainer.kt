@@ -1,6 +1,7 @@
 package com.hotwire.fisiontv.networkqual
 
 import android.content.Context
+import android.os.Build
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaRuntime
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigProvider
@@ -73,11 +74,22 @@ class AppContainer(context: Context) {
      */
     val ooklaRuntime: OoklaRuntime by lazy { OoklaRuntime(applicationContext) }
 
+    // Device-targeting hints for the cert-config fetch. Cheap field reads,
+    // captured once at construction. Forwarded to the backend as
+    // X-Device-{Manufacturer,Model,Build-Fingerprint} so it can resolve a
+    // per-device-targeted config row. Empty/missing both mean "no selector".
+    private val deviceManufacturer: String = Build.MANUFACTURER ?: ""
+    private val deviceModel: String = Build.MODEL ?: ""
+    private val deviceBuildFingerprint: String = Build.FINGERPRINT ?: ""
+
     private val certConfigClient: CertConfigClient = OkHttpCertConfigClient(
         endpoint = BuildConfig.CERT_CONFIG_URL,
         authProvider = authProvider,
         deviceId = DeviceIdentityCollector.deviceId(applicationContext),
         appVersion = BuildConfig.VERSION_NAME,
+        manufacturer = deviceManufacturer,
+        model = deviceModel,
+        buildFingerprint = deviceBuildFingerprint,
         // Tight-timeout client: the cert-config fetch is foreground —
         // MainActivity.onCreate awaits it before the killswitch decision,
         // so a slow backend would freeze Idle for the call timeout. 5 s

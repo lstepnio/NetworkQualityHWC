@@ -84,6 +84,14 @@ class OkHttpResultPublisher(
                 when (resp.code) {
                     201 -> PublishOutcome.Success.also { Log.i(TAG, "POST ok 201 (attempt ${attempt + 1})") }
                     200 -> PublishOutcome.Duplicate.also { Log.i(TAG, "POST dedupe 200 (attempt ${attempt + 1})") }
+                    // 409 means cert_id already in the backend with a different
+                    // payload_hash. For our model cert_id IS the natural
+                    // idempotency key — same row, different submittedAt drift
+                    // across retries. Result is in the DB; treat as duplicate.
+                    409 -> PublishOutcome.Duplicate.also { Log.i(TAG, "POST dedupe 409 (attempt ${attempt + 1}; cert_id already submitted)") }
+                    // 408 Request Timeout and 429 Too Many Requests are
+                    // transient per RFC; retrying with backoff is correct.
+                    408, 429 -> PublishOutcome.TransientFailure("HTTP ${resp.code}")
                     in 500..599 ->
                         PublishOutcome.TransientFailure("HTTP ${resp.code}")
                     else ->

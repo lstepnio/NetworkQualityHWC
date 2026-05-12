@@ -139,6 +139,16 @@ class PublishQueue(
                         when (resp.code) {
                             201 -> PublishOutcome.Success
                             200 -> PublishOutcome.Duplicate
+                            // 409 ⇒ cert_id already in the backend with a
+                            // different payload_hash (submittedAt drift across
+                            // retries). cert_id IS our idempotency key; treat
+                            // as duplicate so the row clears cleanly from the
+                            // queue instead of being misclassified as
+                            // PermanentFailure and dropped with a confusing
+                            // error log.
+                            409 -> PublishOutcome.Duplicate
+                            // 408 + 429 are transient per RFC.
+                            408, 429 -> PublishOutcome.TransientFailure("HTTP ${resp.code}")
                             in 500..599 -> PublishOutcome.TransientFailure("HTTP ${resp.code}")
                             else -> PublishOutcome.PermanentFailure(resp.code, resp.message.ifBlank { "HTTP ${resp.code}" })
                         }

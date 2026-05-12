@@ -9,6 +9,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -38,8 +39,7 @@ import java.io.IOException
  */
 class PublishQueue(
     private val dao: PendingPublishDao,
-    private val send: suspend (PendingPublishEntity, String, String?) -> PublishOutcome = okHttpSender(),
-    private val authProvider: AuthProvider = NoAuthProvider,
+    private val send: suspend (PendingPublishEntity, String) -> PublishOutcome = okHttpSender(),
     private val maxAttempts: Int = 8
 ) {
     private val drainMutex = Mutex()
@@ -73,10 +73,9 @@ class PublishQueue(
 
             Log.i(TAG, "draining ${pending.size} pending result(s) to $endpoint")
             var drained = 0
-            val authHeader = authProvider.authorizationHeader()
 
             for (row in pending) {
-                val outcome = send(row, endpoint, authHeader)
+                val outcome = send(row, endpoint)
                 when (outcome) {
                     is PublishOutcome.Success, is PublishOutcome.Duplicate -> {
                         dao.deleteById(row.certificationId)
@@ -113,18 +112,22 @@ class PublishQueue(
          */
         fun okHttpSender(
             httpClient: OkHttpClient = OkHttpResultPublisher.defaultClient(),
+            authProvider: AuthProvider = NoAuthProvider,
             now: () -> Long = System::currentTimeMillis
-        ): suspend (PendingPublishEntity, String, String?) -> PublishOutcome {
-            return { row, endpoint, authHeader ->
+        ): suspend (PendingPublishEntity, String) -> PublishOutcome {
+            return { row, endpoint ->
                 // Stamp submittedAt/enqueuedAt onto the frozen payload at
                 // POST time. The body the backend actually receives carries
                 // four timestamps: startedAt + completedAt (from the cert
                 // run, frozen at enqueue) and enqueuedAt + submittedAt
                 // (added here so the backend can tell when the row sat in
                 // the queue vs. when the cert itself happened).
-                val body = CertificationPayload
+                val stampedJson = CertificationPayload
                     .stampSubmission(row.payloadJson, submittedAtMs = now(), enqueuedAtMs = row.createdAtMs)
-                    .toRequestBody("application/json".toMediaType())
+                val bodyBytes = stampedJson.toByteArray(Charsets.UTF_8)
+                val body = bodyBytes.toRequestBody("application/json".toMediaType())
+                val path = endpoint.toHttpUrl().encodedPath
+                val authHeader = authProvider.sign("POST", path, bodyBytes)
                 val req = Request.Builder()
                     .url(endpoint)
                     .addHeader("Content-Type", "application/json")

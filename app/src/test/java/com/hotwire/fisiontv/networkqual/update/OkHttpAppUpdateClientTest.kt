@@ -30,7 +30,7 @@ class OkHttpAppUpdateClientTest {
 
     private fun client() = OkHttpAppUpdateClient(
         endpoint = server.url("/v1/app/version").toString(),
-        authProvider = { "Bearer test-token" },
+        authProvider = { _, _, _ -> "Bearer test-token" },
         deviceId = "00000000-0000-0000-0000-000000000001",
         appVersion = "0.5.0",
         appVersionCode = 50

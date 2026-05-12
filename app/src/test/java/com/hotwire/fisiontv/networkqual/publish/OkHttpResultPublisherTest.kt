@@ -44,7 +44,7 @@ class OkHttpResultPublisherTest {
     private fun publisher(maxAttempts: Int = 3, baseBackoffMs: Long = 1L) =
         OkHttpResultPublisher(
             endpoint = server.url("/v1/certifications").toString(),
-            authProvider = { "Bearer test-token" },
+            authProvider = { _, _, _ -> "Bearer test-token" },
             deviceId = "00000000-0000-0000-0000-000000000001",
             appVersion = "0.0.0-test",
             schemaVersion = 1,

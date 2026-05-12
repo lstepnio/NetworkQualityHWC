@@ -54,7 +54,7 @@ class PublishQueueTest {
         dao.upsert(row("a"))
         val q = PublishQueue(
             dao = dao,
-            send = { _, _, _ -> PublishOutcome.Success }
+            send = { _, _ -> PublishOutcome.Success }
         )
         val drained = q.drain("https://example/v1/certifications")
         assertThat(drained).isEqualTo(1)
@@ -64,7 +64,7 @@ class PublishQueueTest {
     @Test fun `duplicate counts as success`() = runTest {
         val dao = FakeDao()
         dao.upsert(row("a"))
-        val q = PublishQueue(dao = dao, send = { _, _, _ -> PublishOutcome.Duplicate })
+        val q = PublishQueue(dao = dao, send = { _, _ -> PublishOutcome.Duplicate })
         assertThat(q.drain("e")).isEqualTo(1)
         assertThat(dao.snapshot()).isEmpty()
     }
@@ -74,7 +74,7 @@ class PublishQueueTest {
         dao.upsert(row("a"))
         val q = PublishQueue(
             dao = dao,
-            send = { _, _, _ -> PublishOutcome.PermanentFailure(400, "bad request") }
+            send = { _, _ -> PublishOutcome.PermanentFailure(400, "bad request") }
         )
         assertThat(q.drain("e")).isEqualTo(0)
         assertThat(dao.snapshot()).isEmpty()
@@ -86,7 +86,7 @@ class PublishQueueTest {
         dao.upsert(row("b"))
         val q = PublishQueue(
             dao = dao,
-            send = { _, _, _ -> PublishOutcome.TransientFailure("net down") }
+            send = { _, _ -> PublishOutcome.TransientFailure("net down") }
         )
         assertThat(q.drain("e")).isEqualTo(0)
         // Both rows still present; first row has attempt=1 (the one we tried),
@@ -104,7 +104,7 @@ class PublishQueueTest {
         dao.upsert(row("alive"))
         val q = PublishQueue(
             dao = dao,
-            send = { _, _, _ -> PublishOutcome.Success },
+            send = { _, _ -> PublishOutcome.Success },
             maxAttempts = 8
         )
         assertThat(q.drain("e")).isEqualTo(1)
@@ -118,7 +118,7 @@ class PublishQueueTest {
         var attempts = 0
         val q = PublishQueue(
             dao = dao,
-            send = { _, _, _ ->
+            send = { _, _ ->
                 attempts++
                 if (attempts < 3) PublishOutcome.Success else PublishOutcome.TransientFailure("dropped")
             }

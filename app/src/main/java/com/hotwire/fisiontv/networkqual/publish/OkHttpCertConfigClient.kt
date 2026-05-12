@@ -4,6 +4,7 @@ import android.util.Log
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.IOException
@@ -30,7 +31,8 @@ class OkHttpCertConfigClient(
     @Volatile private var cachedEtag: String? = null
 
     override suspend fun fetch(): FetchOutcome = withContext(Dispatchers.IO) {
-        val authHeader = authProvider.authorizationHeader()
+        val path = endpoint.toHttpUrl().encodedPath
+        val authHeader = authProvider.sign("GET", path, EMPTY_BODY)
         val builder = Request.Builder()
             .url(endpoint)
             .addHeader("X-Device-Id", deviceId)
@@ -70,5 +72,6 @@ class OkHttpCertConfigClient(
 
     companion object {
         private const val TAG = "CertConfigClient"
+        private val EMPTY_BODY = ByteArray(0)
     }
 }

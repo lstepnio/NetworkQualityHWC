@@ -132,6 +132,115 @@ class RuntimeConfigParserTest {
         assertThat(cfg.tests.latency.samples).isEqualTo(10)
     }
 
+    // --- wifiLinkQuality + healthAssessment tunables (contract v1.3.0)
+    //
+    // Both sections are optional in the wire format. When present, every
+    // field gets clamp-or-fallback semantics with logged warnings — a
+    // bad value can't poison the rest of the config.
+
+    @Test fun `wifiLinkQuality parses when valid and overrides bundled defaults`() {
+        val withWifi = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "wifiLinkQuality": {
+              "excellentRssiMin": -50,
+              "strongRssiMin": -60,
+              "goodRssiMin": -70,
+              "rateAdaptationDegradedThreshold": 0.6
+            }"""
+        )
+        val cfg = RuntimeConfigParser.parse(withWifi)
+        assertThat(cfg.wifiLinkQuality.excellentRssiMin).isEqualTo(-50)
+        assertThat(cfg.wifiLinkQuality.strongRssiMin).isEqualTo(-60)
+        assertThat(cfg.wifiLinkQuality.goodRssiMin).isEqualTo(-70)
+        assertThat(cfg.wifiLinkQuality.rateAdaptationDegradedThreshold).isEqualTo(0.6)
+    }
+
+    @Test fun `wifiLinkQuality with ordering violation falls back wholesale`() {
+        // Bands aren't well-defined if excellent < strong, so we don't
+        // substitute fields — we ditch the whole section.
+        val bad = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "wifiLinkQuality": {
+              "excellentRssiMin": -75,
+              "strongRssiMin": -65,
+              "goodRssiMin": -55,
+              "rateAdaptationDegradedThreshold": 0.5
+            }"""
+        )
+        val cfg = RuntimeConfigParser.parse(bad)
+        assertThat(cfg.wifiLinkQuality).isEqualTo(RuntimeConfigDefaults.bundled.wifiLinkQuality)
+    }
+
+    @Test fun `wifiLinkQuality individual field out of range falls back to bundled for that field`() {
+        val bad = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "wifiLinkQuality": {
+              "excellentRssiMin": -50,
+              "strongRssiMin": -60,
+              "goodRssiMin": -70,
+              "rateAdaptationDegradedThreshold": 5.0
+            }"""
+        )
+        val cfg = RuntimeConfigParser.parse(bad)
+        assertThat(cfg.wifiLinkQuality.excellentRssiMin).isEqualTo(-50) // preserved
+        // Bad field substituted for bundled default
+        assertThat(cfg.wifiLinkQuality.rateAdaptationDegradedThreshold)
+            .isEqualTo(RuntimeConfigDefaults.bundled.wifiLinkQuality.rateAdaptationDegradedThreshold)
+    }
+
+    @Test fun `healthAssessment parses when valid and overrides bundled defaults`() {
+        val withHealth = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "healthAssessment": {
+              "excellentMin": 90,
+              "strongMin": 65,
+              "goodMin": 40,
+              "topTierStretchUpFactor": 1.3,
+              "topTierStretchDownFactor": 0.75
+            }"""
+        )
+        val cfg = RuntimeConfigParser.parse(withHealth)
+        assertThat(cfg.healthAssessment.excellentMin).isEqualTo(90)
+        assertThat(cfg.healthAssessment.strongMin).isEqualTo(65)
+        assertThat(cfg.healthAssessment.goodMin).isEqualTo(40)
+        assertThat(cfg.healthAssessment.topTierStretchUpFactor).isEqualTo(1.3)
+        assertThat(cfg.healthAssessment.topTierStretchDownFactor).isEqualTo(0.75)
+    }
+
+    @Test fun `healthAssessment topTierStretchUpFactor exactly 1 dot 0 falls back`() {
+        // Must be strictly >1.0; 1.0 means "cap at the tier minimum"
+        // which would make every result MARGINAL.
+        val bad = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "healthAssessment": {
+              "excellentMin": 80,
+              "strongMin": 55,
+              "goodMin": 30,
+              "topTierStretchUpFactor": 1.0,
+              "topTierStretchDownFactor": 0.66
+            }"""
+        )
+        val cfg = RuntimeConfigParser.parse(bad)
+        assertThat(cfg.healthAssessment.topTierStretchUpFactor)
+            .isEqualTo(RuntimeConfigDefaults.bundled.healthAssessment.topTierStretchUpFactor)
+        // Other valid fields are preserved.
+        assertThat(cfg.healthAssessment.excellentMin).isEqualTo(80)
+    }
+
+    @Test fun `tunables absent uses bundled defaults silently`() {
+        // The sample has neither section. This is the v0.9.2-and-prior
+        // wire format; rolling forward the v1.3.0 contract must keep
+        // working for those clients.
+        val cfg = RuntimeConfigParser.parse(sample)
+        assertThat(cfg.wifiLinkQuality).isEqualTo(RuntimeConfigDefaults.bundled.wifiLinkQuality)
+        assertThat(cfg.healthAssessment).isEqualTo(RuntimeConfigDefaults.bundled.healthAssessment)
+    }
+
     @Test fun `malformed uploadResults fails closed (kill switch on)`() {
         // endpoint: 42 — number where a string is expected. Parser must
         // not let an upload accidentally fire to whatever toString()

@@ -3,6 +3,7 @@ package com.hotwire.fisiontv.networkqual.publish
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.Tier
 import com.hotwire.fisiontv.networkqual.cert.TierThreshold
+import com.hotwire.fisiontv.networkqual.config.HealthAssessmentConfig
 import com.hotwire.fisiontv.networkqual.config.LatencyPhaseConfig
 import com.hotwire.fisiontv.networkqual.config.OoklaServer
 import com.hotwire.fisiontv.networkqual.config.PlaybackPhaseConfig
@@ -11,6 +12,7 @@ import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfigDefaults
 import com.hotwire.fisiontv.networkqual.config.TestsConfig
 import com.hotwire.fisiontv.networkqual.config.ThroughputPhaseConfig
+import com.hotwire.fisiontv.networkqual.config.WifiLinkQualityConfig
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -54,8 +56,8 @@ object RuntimeConfigParser {
             tests = parseTests(o.optJSONObject("tests"), defaults.tests),
             tiers = o.getJSONArray("tiers").mapTo(::parseTier),
             dnsProbeHosts = o.optJSONArray("dnsProbeHosts")?.toStringList() ?: defaults.dnsProbeHosts,
-            healthAssessment = defaults.healthAssessment,
-            wifiLinkQuality = defaults.wifiLinkQuality,
+            healthAssessment = parseHealthAssessmentSafe(o.optJSONObject("healthAssessment"), defaults.healthAssessment),
+            wifiLinkQuality = parseWifiLinkQualitySafe(o.optJSONObject("wifiLinkQuality"), defaults.wifiLinkQuality),
             resultsPublishing = publishing,
             ooklaConfigUrl = o.optString("ooklaConfigUrl").ifBlank { defaults.ooklaConfigUrl }
         )
@@ -136,6 +138,79 @@ object RuntimeConfigParser {
             PlaybackPhaseConfig(
                 manifestUrl = manifestUrl,
                 durationSec = clampInt(o, "durationSec", fallback.durationSec, 5..120, ctx)
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")
+            fallback
+        }
+    }
+
+    private fun parseWifiLinkQualitySafe(
+        o: JSONObject?,
+        fallback: WifiLinkQualityConfig
+    ): WifiLinkQualityConfig {
+        if (o == null) return fallback
+        val ctx = "wifiLinkQuality"
+        return try {
+            val excellent = clampInt(o, "excellentRssiMin", fallback.excellentRssiMin, -100..0, ctx)
+            val strong = clampInt(o, "strongRssiMin", fallback.strongRssiMin, -100..0, ctx)
+            val good = clampInt(o, "goodRssiMin", fallback.goodRssiMin, -100..0, ctx)
+            val rate = clampDouble(o, "rateAdaptationDegradedThreshold", fallback.rateAdaptationDegradedThreshold, 0.0..1.0, ctx)
+            // Ordering invariant: if violated, fall back wholesale —
+            // partial substitution would still produce a nonsensical
+            // band layout (e.g. excellent < strong).
+            if (!(excellent > strong && strong > good)) {
+                Log.w(TAG, "$ctx ordering invariant violated (excellent=$excellent strong=$strong good=$good); using bundled defaults")
+                return fallback
+            }
+            WifiLinkQualityConfig(
+                excellentRssiMin = excellent,
+                strongRssiMin = strong,
+                goodRssiMin = good,
+                rateAdaptationDegradedThreshold = rate
+            )
+        } catch (t: Throwable) {
+            Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")
+            fallback
+        }
+    }
+
+    private fun parseHealthAssessmentSafe(
+        o: JSONObject?,
+        fallback: HealthAssessmentConfig
+    ): HealthAssessmentConfig {
+        if (o == null) return fallback
+        val ctx = "healthAssessment"
+        return try {
+            val excellent = clampInt(o, "excellentMin", fallback.excellentMin, 1..100, ctx)
+            val strong = clampInt(o, "strongMin", fallback.strongMin, 1..100, ctx)
+            val good = clampInt(o, "goodMin", fallback.goodMin, 1..100, ctx)
+            // topTierStretchUpFactor must be strictly > 1.0. Clamp via
+            // a small open-interval check (the generic clampDouble range
+            // is closed on both ends).
+            val up = run {
+                if (!o.has("topTierStretchUpFactor")) {
+                    Log.w(TAG, "$ctx.topTierStretchUpFactor missing; using bundled ${fallback.topTierStretchUpFactor}")
+                    fallback.topTierStretchUpFactor
+                } else {
+                    val v = o.optDouble("topTierStretchUpFactor", fallback.topTierStretchUpFactor)
+                    if (v <= 1.0) {
+                        Log.w(TAG, "$ctx.topTierStretchUpFactor=$v not > 1.0; using bundled ${fallback.topTierStretchUpFactor}")
+                        fallback.topTierStretchUpFactor
+                    } else v
+                }
+            }
+            val down = clampDouble(o, "topTierStretchDownFactor", fallback.topTierStretchDownFactor, 0.0..1.0, ctx)
+            if (!(excellent > strong && strong > good)) {
+                Log.w(TAG, "$ctx ordering invariant violated (excellent=$excellent strong=$strong good=$good); using bundled defaults")
+                return fallback
+            }
+            HealthAssessmentConfig(
+                excellentMin = excellent,
+                strongMin = strong,
+                goodMin = good,
+                topTierStretchUpFactor = up,
+                topTierStretchDownFactor = down
             )
         } catch (t: Throwable) {
             Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")

@@ -10,6 +10,7 @@ import com.hotwire.fisiontv.networkqual.publish.CertConfigClient
 import com.hotwire.fisiontv.networkqual.publish.FetchOutcome
 import com.hotwire.fisiontv.networkqual.publish.NoAuthProvider
 import com.hotwire.fisiontv.networkqual.publish.OkHttpCertConfigClient
+import com.hotwire.fisiontv.networkqual.publish.OkHttpResultPublisher
 import com.hotwire.fisiontv.networkqual.publish.PublishQueue
 import com.hotwire.fisiontv.networkqual.update.AppUpdateClient
 import com.hotwire.fisiontv.networkqual.update.AppUpdateDownloader
@@ -60,7 +61,13 @@ class AppContainer(context: Context) {
         endpoint = BuildConfig.CERT_CONFIG_URL,
         authProvider = NoAuthProvider,
         deviceId = DeviceIdentityCollector.deviceId(applicationContext),
-        appVersion = BuildConfig.VERSION_NAME
+        appVersion = BuildConfig.VERSION_NAME,
+        // Tight-timeout client: the cert-config fetch is foreground —
+        // MainActivity.onCreate awaits it before the killswitch decision,
+        // so a slow backend would freeze Idle for the call timeout. 5 s
+        // worst-case lets us proceed with the cached/bundled config
+        // promptly instead of blocking the tech on a hung fetch.
+        client = OkHttpResultPublisher.foregroundClient()
     )
 
     // ── App self-update plumbing ────────────────────────────────────────

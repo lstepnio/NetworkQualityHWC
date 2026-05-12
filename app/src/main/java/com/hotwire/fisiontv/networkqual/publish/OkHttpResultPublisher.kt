@@ -116,5 +116,27 @@ class OkHttpResultPublisher(
             .callTimeout(30, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
+
+        /**
+         * Tight-timeout client for **foreground** fetches the tech is
+         * effectively waiting on. Today: the cert-config fetch that
+         * gates the killswitch decision on every activity launch.
+         * If the backend is unreachable we'd rather fail fast and
+         * proceed with the cached/bundled config than park the tech
+         * on a frozen Idle screen for 30 s.
+         *
+         * 3 s connect / 5 s overall is empirically enough for the
+         * lab LAN's 304-fast-path and the production-shape ETag round-trip.
+         * Background paths (publishing results, app-update fetch)
+         * continue to use [defaultClient] which can afford the longer
+         * patience.
+         */
+        fun foregroundClient(): OkHttpClient = OkHttpClient.Builder()
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(5, TimeUnit.SECONDS)
+            .writeTimeout(5, TimeUnit.SECONDS)
+            .callTimeout(5, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
     }
 }

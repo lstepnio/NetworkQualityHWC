@@ -275,6 +275,14 @@ object CertificationPayload {
     }
 
     private fun metricsJson(r: CertificationResult): JSONObject = JSONObject().apply {
+        // Environment snapshots captured immediately before + after the
+        // speedtest phase. Used for post-hoc diagnosis of throughput
+        // variance — thermal status shifts, CPU frequency drift, Wi-Fi
+        // RSSI / link-rate changes during the measurement window.
+        // Null when no collector wired (tests).
+        r.environmentAtSpeedtestStart?.let { put("environmentAtSpeedtestStart", envJson(it)) }
+        r.environmentAtSpeedtestEnd?.let   { put("environmentAtSpeedtestEnd",   envJson(it)) }
+
         put("selectedServer", JSONObject().apply {
             put("id", r.selectedServer.id)
             put("name", r.selectedServer.name)
@@ -357,5 +365,17 @@ object CertificationPayload {
 
     private fun JSONObject.putOrNull(key: String, value: Any?) {
         if (value == null) put(key, JSONObject.NULL) else put(key, value)
+    }
+
+    private fun envJson(s: EnvironmentSnapshot): JSONObject = JSONObject().apply {
+        put("takenAt", iso(s.takenAtMs))
+        putOrNull("thermalStatus", s.thermalStatus)
+        putOrNull("thermalStatusName", s.thermalStatusName)
+        putOrNull("cpu0FreqKhz", s.cpu0FreqKhz)
+        putOrNull("socTempMilliC", s.socTempMilliC)
+        putOrNull("rssiDbm", s.rssiDbm)
+        putOrNull("linkSpeedTxMbps", s.linkSpeedTxMbps)
+        putOrNull("linkSpeedRxMbps", s.linkSpeedRxMbps)
+        putOrNull("wifiStandard", s.wifiStandard)
     }
 }

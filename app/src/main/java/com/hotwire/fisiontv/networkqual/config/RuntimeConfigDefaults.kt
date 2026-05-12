@@ -12,26 +12,16 @@ object RuntimeConfigDefaults {
     val bundled: RuntimeConfig = RuntimeConfig(
         schemaVersion = 1,
         configVersion = "local-defaults",
-        servers = listOf(
-            OoklaServer(id = "mia",  name = "Miami",            host = "speedtestmia.gethotwired.com"),
-            OoklaServer(id = "apf",  name = "Apopka",           host = "speedtestapf.gethotwired.com"),
-            OoklaServer(id = "atl",  name = "Atlanta",          host = "speedtestatl.gethotwired.com"),
-            OoklaServer(id = "boca", name = "Boca Raton",       host = "speedtestboca.gethotwired.com"),
-            OoklaServer(id = "dfw",  name = "Dallas/Fort Worth", host = "speedtestdfw.gethotwired.com"),
-            OoklaServer(id = "la",   name = "Los Angeles",      host = "speedtestla.gethotwired.com"),
-            OoklaServer(id = "nc",   name = "North Carolina",   host = "speedtestnc.gethotwired.com")
-        ),
         tests = TestsConfig(
-            // Parallel-stream counts document the empirically-best values
-            // from a 78-trial conn-range sweep on the lab STB. The Ookla
-            // binary doesn't actually read these from cert-config — they're
-            // enforced on the binary CLI via --download-conn-range /
-            // --upload-conn-range in OoklaSpeedtestRunner. Kept here so
-            // cert-config matches reality and future tooling can pick
-            // these up.
-            download = ThroughputPhaseConfig(durationSec = 10, parallel = 8,  perRequestBytes = 100_000_000L, warmupFraction = 0.33),
-            upload   = ThroughputPhaseConfig(durationSec = 5,  parallel = 16, perRequestBytes = 50_000_000L,  warmupFraction = 0.33),
-            latency  = LatencyPhaseConfig(samples = 10, timeoutMs = 2_000),
+            // The only knob we actually pass to libookla.so is the conn
+            // range — `--download-conn-range` / `--upload-conn-range`,
+            // wired in OoklaSpeedtestRunner. Empirically-best values
+            // from a 78-trial sweep on the lab STB: 8/16 cut DL stddev
+            // from 17.8 to 1.9 Mbps and UL from 79.8 to 11.1. Phase
+            // durations live in the Ookla embed-config response (see
+            // contract SPEC §6.1.1) and are not tunable from this side.
+            download = ThroughputPhaseConfig(parallel = 8),
+            upload   = ThroughputPhaseConfig(parallel = 16),
             playback = PlaybackPhaseConfig(
                 manifestUrl = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",
                 durationSec = 20

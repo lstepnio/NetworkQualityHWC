@@ -4,8 +4,6 @@ import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.Tier
 import com.hotwire.fisiontv.networkqual.cert.TierThreshold
 import com.hotwire.fisiontv.networkqual.config.HealthAssessmentConfig
-import com.hotwire.fisiontv.networkqual.config.LatencyPhaseConfig
-import com.hotwire.fisiontv.networkqual.config.OoklaServer
 import com.hotwire.fisiontv.networkqual.config.PlaybackPhaseConfig
 import com.hotwire.fisiontv.networkqual.config.ResultsPublishingConfig
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
@@ -29,11 +27,16 @@ import org.json.JSONObject
  * everything else fails to parse.
  *
  * Hard failures still throw: `tiers` missing entirely or containing an
- * unknown id, `servers` empty, top-level JSON malformed. Those break
- * certification too fundamentally for fallback to be safe — the engine
- * needs the bundled defaults wholesale in that case, and the caller in
+ * unknown id, top-level JSON malformed. Those break certification too
+ * fundamentally for fallback to be safe — the caller in
  * [OkHttpCertConfigClient] catches the throw and keeps the bundled
  * config.
+ *
+ * As of contract v1.4.0, the parser silently ignores deprecated fields
+ * that may appear in pre-v1.4.0 configs in the DB: `servers[]`,
+ * `tests.latency`, and the per-phase `durationSec` / `perRequestBytes`
+ * / `warmupFraction` keys. JSONObject's read-by-key behavior makes this
+ * automatic — we just don't ask for those keys.
  */
 object RuntimeConfigParser {
 
@@ -52,7 +55,6 @@ object RuntimeConfigParser {
         return RuntimeConfig(
             schemaVersion = o.optInt("schemaVersion", defaults.schemaVersion),
             configVersion = o.optString("configVersion").ifBlank { defaults.configVersion },
-            servers = o.getJSONArray("servers").mapTo(::parseServer),
             tests = parseTests(o.optJSONObject("tests"), defaults.tests),
             tiers = o.getJSONArray("tiers").mapTo(::parseTier),
             dnsProbeHosts = o.optJSONArray("dnsProbeHosts")?.toStringList() ?: defaults.dnsProbeHosts,
@@ -63,14 +65,6 @@ object RuntimeConfigParser {
         )
     }
 
-    private fun parseServer(o: JSONObject): OoklaServer = OoklaServer(
-        id = o.getString("id"),
-        name = o.getString("name"),
-        host = o.getString("host"),
-        port = o.optInt("port", 8080),
-        secure = o.optBoolean("secure", true)
-    )
-
     private fun parseTests(o: JSONObject?, defaults: TestsConfig): TestsConfig {
         if (o == null) {
             Log.w(TAG, "tests section missing; using bundled defaults")
@@ -79,7 +73,6 @@ object RuntimeConfigParser {
         return TestsConfig(
             download = parseThroughputSafe(o.optJSONObject("download"), defaults.download, "download"),
             upload = parseThroughputSafe(o.optJSONObject("upload"), defaults.upload, "upload"),
-            latency = parseLatencySafe(o.optJSONObject("latency"), defaults.latency),
             playback = parsePlaybackSafe(o.optJSONObject("playback"), defaults.playback)
         )
     }
@@ -96,27 +89,7 @@ object RuntimeConfigParser {
         val ctx = "tests.$label"
         return try {
             ThroughputPhaseConfig(
-                durationSec = clampInt(o, "durationSec", fallback.durationSec, 1..120, ctx),
-                parallel = clampInt(o, "parallel", fallback.parallel, 1..16, ctx),
-                perRequestBytes = clampLong(o, "perRequestBytes", fallback.perRequestBytes, 1_000_000L..2_000_000_000L, ctx),
-                warmupFraction = clampDouble(o, "warmupFraction", fallback.warmupFraction, 0.0..0.9, ctx)
-            )
-        } catch (t: Throwable) {
-            Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")
-            fallback
-        }
-    }
-
-    private fun parseLatencySafe(o: JSONObject?, fallback: LatencyPhaseConfig): LatencyPhaseConfig {
-        if (o == null) {
-            Log.w(TAG, "tests.latency missing; using bundled defaults")
-            return fallback
-        }
-        val ctx = "tests.latency"
-        return try {
-            LatencyPhaseConfig(
-                samples = clampInt(o, "samples", fallback.samples, 3..100, ctx),
-                timeoutMs = clampInt(o, "timeoutMs", fallback.timeoutMs, 100..30_000, ctx)
+                parallel = clampInt(o, "parallel", fallback.parallel, 1..16, ctx)
             )
         } catch (t: Throwable) {
             Log.w(TAG, "$ctx parse failed (${t.message}); using bundled defaults")

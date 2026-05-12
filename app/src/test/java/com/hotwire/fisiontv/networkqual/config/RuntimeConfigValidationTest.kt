@@ -8,47 +8,35 @@ import org.junit.Test
  * The validation in RuntimeConfig.init blocks is the line of defence
  * against a remote cert-config arriving with garbage values. These tests
  * ensure that line of defence actually catches the obvious garbage.
+ *
+ * As of contract v1.4.0 the `servers[]`, `tests.latency`, and per-phase
+ * `durationSec`/`perRequestBytes`/`warmupFraction` fields have been
+ * dropped from the data classes (they were never consumed by the Ookla
+ * code path), so the validation surface here is correspondingly smaller.
+ * `OoklaServer` is kept because the result-side `selectedServer` still
+ * uses it.
  */
 class RuntimeConfigValidationTest {
 
     @Test fun `bundled defaults validate cleanly`() {
         // Constructing the singleton runs all init blocks; just access it.
         val cfg = RuntimeConfigDefaults.bundled
-        assertThat(cfg.servers).isNotEmpty()
         assertThat(cfg.tiers).isNotEmpty()
         assertThat(cfg.dnsProbeHosts).isNotEmpty()
     }
 
-    @Test fun `empty server list rejected`() {
+    @Test fun `throughput parallel out of range rejected`() {
         assertThrows(IllegalArgumentException::class.java) {
-            RuntimeConfigDefaults.bundled.copy(servers = emptyList())
+            ThroughputPhaseConfig(parallel = 0)
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            ThroughputPhaseConfig(parallel = 17)
         }
     }
 
-    @Test fun `duplicate server ids rejected`() {
-        val dupes = RuntimeConfigDefaults.bundled.servers.let {
-            listOf(it[0], it[0])
-        }
+    @Test fun `playback durationSec below floor rejected`() {
         assertThrows(IllegalArgumentException::class.java) {
-            RuntimeConfigDefaults.bundled.copy(servers = dupes)
-        }
-    }
-
-    @Test fun `negative throughput duration rejected`() {
-        assertThrows(IllegalArgumentException::class.java) {
-            ThroughputPhaseConfig(
-                durationSec = -1, parallel = 4,
-                perRequestBytes = 1_000_000L, warmupFraction = 0.3
-            )
-        }
-    }
-
-    @Test fun `warmup fraction over 0_9 rejected`() {
-        assertThrows(IllegalArgumentException::class.java) {
-            ThroughputPhaseConfig(
-                durationSec = 10, parallel = 4,
-                perRequestBytes = 1_000_000L, warmupFraction = 0.95
-            )
+            PlaybackPhaseConfig(manifestUrl = "https://x/y.mpd", durationSec = 1)
         }
     }
 

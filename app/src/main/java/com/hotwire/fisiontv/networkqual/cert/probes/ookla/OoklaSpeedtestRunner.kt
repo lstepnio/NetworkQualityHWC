@@ -30,6 +30,16 @@ class OoklaSpeedtestRunner(
     private val runtime: OoklaRuntime,
     private val configUrl: String,
     /**
+     * Parallel TCP stream count for download. Passed as
+     * `--download-conn-range=N` so the binary doesn't auto-tune
+     * (which was the dominant variance source — see v0.9.0 PR notes).
+     * Driven from cert-config's `tests.download.parallel`, so tuning
+     * happens server-side without an APK release.
+     */
+    private val downloadConnRange: Int,
+    /** Same as [downloadConnRange] but for the upload phase. */
+    private val uploadConnRange: Int,
+    /**
      * Hard ceiling for one Ookla execution — ping + download + upload
      * usually finish in ~50 s; this kills a hung subprocess at 2 minutes
      * so a frozen test doesn't strand the whole certification.
@@ -49,6 +59,12 @@ class OoklaSpeedtestRunner(
             close(); return@callbackFlow
         }
 
+        // Clamp to a sane band so a misconfigured cert-config can't
+        // wedge the binary. Documented Ookla minimum is 1; >32 streams
+        // doesn't help in practice and starts to harm.
+        val dl = downloadConnRange.coerceIn(1, 32)
+        val ul = uploadConnRange.coerceIn(1, 32)
+        Log.i(TAG, "spawning ookla: dl_conn=$dl ul_conn=$ul")
         val process: Process = try {
             ProcessBuilder(
                 runtime.binaryPath,
@@ -60,13 +76,13 @@ class OoklaSpeedtestRunner(
                 // picks the lowest-latency server either way) — but lets
                 // future tooling correlate why a server was chosen.
                 "--selection-details",
-                // Empirically determined on the lab STB (78 trials, 17
-                // configs, ~42min). Default auto-tune produces wildly
-                // inconsistent results (DL rel. variance 17.3%, UL 62.5%);
-                // pinning both ranges drops the binary to DL 1.7% / UL 6.0%
-                // variance AND raises throughput +10% DL / +45% UL.
-                "--download-conn-range=8",
-                "--upload-conn-range=16"
+                // Values driven from cert-config so tuning happens
+                // server-side. Empirically best on the lab STB was
+                // 8/16 (78-trial sweep, v0.9.0 PR notes); auto-tune
+                // gave DL rel.var 17.3% / UL 62.5%, pinning to those
+                // values brings it to 1.7% / 6.0%.
+                "--download-conn-range=$dl",
+                "--upload-conn-range=$ul"
             ).redirectErrorStream(true).start()
         } catch (t: Throwable) {
             trySend(OoklaEvent.Failed("spawn: ${t::class.simpleName}: ${t.message}"))

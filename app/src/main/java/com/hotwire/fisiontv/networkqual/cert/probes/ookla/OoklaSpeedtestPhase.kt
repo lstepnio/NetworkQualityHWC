@@ -23,6 +23,15 @@ class OoklaSpeedtestPhase(
     private val runtime: OoklaRuntime,
     private val primaryConfigUrl: String,
     /**
+     * Parallel-stream count for download. Forwarded to the Ookla binary
+     * as `--download-conn-range`. Source of truth: cert-config's
+     * `tests.download.parallel`. Default mirrors the empirically-best
+     * value found on the lab STB.
+     */
+    private val downloadConnRange: Int = 8,
+    /** Same as [downloadConnRange] for upload; defaults to 16. */
+    private val uploadConnRange: Int = 16,
+    /**
      * Optional fallback URL the phase retries against if the primary URL
      * fails before emitting a Started event (the typical TLS / config-
      * fetch failure mode). Null disables fallback.
@@ -35,7 +44,7 @@ class OoklaSpeedtestPhase(
      */
     private val perfLocks: PerformanceLocks = PerformanceLocks.NOOP,
     private val runnerFactory: (String) -> OoklaSpeedtestRunner = { url ->
-        OoklaSpeedtestRunner(runtime, url)
+        OoklaSpeedtestRunner(runtime, url, downloadConnRange, uploadConnRange)
     }
 ) {
     suspend fun run(onProgress: (Float) -> Unit): OoklaSpeedtestOutcome {

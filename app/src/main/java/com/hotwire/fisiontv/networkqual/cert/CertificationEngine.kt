@@ -66,10 +66,16 @@ class CertificationEngine(
         config = config,
         probes = DefaultProbeFactory(context, config),
         ookla = { onProgress ->
+            // Connection-count tuning is server-driven via cert-config.
+            // Bundled-defaults fallback (RuntimeConfigDefaults) carries
+            // 8 / 16 so even if the STB never reaches the backend the
+            // values match the lab-tuned optimum.
             OoklaSpeedtestPhase(
                 runtime = ooklaRuntime,
                 primaryConfigUrl = config.ooklaConfigUrl,
                 fallbackConfigUrl = config.ooklaConfigUrlFallback,
+                downloadConnRange = config.tests.download.parallel,
+                uploadConnRange = config.tests.upload.parallel,
                 perfLocks = AndroidPerformanceLocks(context)
             ).run(onProgress)
         },

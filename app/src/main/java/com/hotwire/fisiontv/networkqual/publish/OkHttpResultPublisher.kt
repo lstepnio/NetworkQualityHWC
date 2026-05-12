@@ -11,6 +11,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.IOException
+import java.util.Random
 import java.util.concurrent.TimeUnit
 import kotlin.math.min
 
@@ -28,7 +29,10 @@ class OkHttpResultPublisher(
     private val schemaVersion: Int = 1,
     private val client: OkHttpClient = defaultClient(),
     private val maxAttempts: Int = 4,
-    private val baseBackoffMs: Long = 500L
+    private val baseBackoffMs: Long = 500L,
+    /** Injectable so tests get a deterministic schedule; production uses
+     *  a single shared instance across attempts. */
+    private val random: Random = Random()
 ) : ResultPublisher {
 
     override suspend fun publish(result: CertificationResult): PublishOutcome =
@@ -56,8 +60,16 @@ class OkHttpResultPublisher(
                     is PublishOutcome.TransientFailure -> {
                         lastError = outcome.cause
                         if (attempt < maxAttempts - 1) {
-                            val backoff = min(baseBackoffMs * (1L shl attempt), 8_000L)
-                            Log.w(TAG, "transient failure (attempt ${attempt + 1}/$maxAttempts): ${outcome.cause} — retrying in ${backoff}ms")
+                            // Equal-jitter exponential backoff. Half the
+                            // nominal interval is fixed; the other half is
+                            // uniform random. With N STBs hitting a 5xx in
+                            // the same window, this de-synchronises their
+                            // retries instead of stacking them at exactly
+                            // 500 / 1000 / 2000 / 4000 ms.
+                            val nominal = min(baseBackoffMs * (1L shl attempt), 8_000L)
+                            val half = nominal / 2
+                            val backoff = half + (random.nextLong() and Long.MAX_VALUE) % (half + 1)
+                            Log.w(TAG, "transient failure (attempt ${attempt + 1}/$maxAttempts): ${outcome.cause} — retrying in ${backoff}ms (nominal ${nominal}ms ± jitter)")
                             delay(backoff)
                         }
                     }

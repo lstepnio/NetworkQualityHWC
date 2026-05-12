@@ -1,5 +1,6 @@
 package com.hotwire.fisiontv.networkqual.cert.probes.ookla
 
+import android.os.Process as AndroidProcess
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
@@ -84,6 +85,16 @@ class OoklaSpeedtestRunner(
         // on a full pipe. Each line is one complete JSON object per the
         // jsonl spec; a partial line at EOF is silently dropped.
         val reader = thread(name = "ookla-stdout", isDaemon = true) {
+            // Elevate to near-RT priority. The reader is on the critical
+            // path: if it stalls (GC pause, scheduler delay, IO-pool
+            // contention) the binary's stdout pipe fills, the binary
+            // blocks on write, and the test sample windows distort. On a
+            // Cortex-A55 ATV STB with default nice=0 the reader can lose
+            // a 50–150 ms window to a competing UI thread; URGENT_AUDIO
+            // gives it strict preemption over normal threads while
+            // staying out of true RT scheduling.
+            try { AndroidProcess.setThreadPriority(AndroidProcess.THREAD_PRIORITY_URGENT_AUDIO) }
+            catch (t: Throwable) { Log.w(TAG, "set reader priority: ${t.message}") }
             try {
                 BufferedReader(InputStreamReader(process.inputStream), READ_BUFFER_BYTES).use { br ->
                     var line: String?

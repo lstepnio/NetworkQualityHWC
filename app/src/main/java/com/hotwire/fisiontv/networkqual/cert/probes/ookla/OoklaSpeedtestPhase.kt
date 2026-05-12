@@ -28,25 +28,38 @@ class OoklaSpeedtestPhase(
      * fetch failure mode). Null disables fallback.
      */
     private val fallbackConfigUrl: String? = null,
+    /**
+     * Acquired around the speedtest to keep the Wi-Fi radio out of
+     * power-save and the CPU awake. Tests pass [PerformanceLocks.NOOP];
+     * production wires [AndroidPerformanceLocks].
+     */
+    private val perfLocks: PerformanceLocks = PerformanceLocks.NOOP,
     private val runnerFactory: (String) -> OoklaSpeedtestRunner = { url ->
         OoklaSpeedtestRunner(runtime, url)
     }
 ) {
     suspend fun run(onProgress: (Float) -> Unit): OoklaSpeedtestOutcome {
-        // Try primary first. If it fails before emitting a Started event,
-        // the failure is almost always config-fetch (TLS / DNS / network
-        // /unreachable) — retry on the fallback URL. Failures *after*
-        // Started are mid-test and aren't retried (would distort metrics).
-        val primary = runOnce(primaryConfigUrl, onProgress)
-        if (primary.outcome != null) return primary.outcome
-        if (primary.startedBeforeFailure || fallbackConfigUrl == null) {
-            throw OoklaFailure(primary.failure ?: "ookla speedtest failed")
+        // Hold the Wi-Fi high-perf + CPU wake locks for the entirety of
+        // the speedtest (primary attempt + optional fallback). The radio
+        // being out of doze before TCP starts ramping eliminates a real
+        // source of first-second variance.
+        perfLocks.acquire().use {
+            // Try primary first. If it fails before emitting a Started
+            // event, the failure is almost always config-fetch (TLS / DNS
+            // / network-unreachable) — retry on the fallback URL.
+            // Failures *after* Started are mid-test and aren't retried
+            // (would distort metrics).
+            val primary = runOnce(primaryConfigUrl, onProgress)
+            if (primary.outcome != null) return primary.outcome
+            if (primary.startedBeforeFailure || fallbackConfigUrl == null) {
+                throw OoklaFailure(primary.failure ?: "ookla speedtest failed")
+            }
+            Log.w(TAG, "primary URL failed before start; retrying against fallback: $fallbackConfigUrl")
+            // Reset visible progress so the bar restarts cleanly.
+            onProgress(0f)
+            val secondary = runOnce(fallbackConfigUrl, onProgress)
+            return secondary.outcome ?: throw OoklaFailure(secondary.failure ?: "ookla speedtest failed (fallback)")
         }
-        Log.w(TAG, "primary URL failed before start; retrying against fallback: $fallbackConfigUrl")
-        // Reset visible progress so the bar restarts cleanly.
-        onProgress(0f)
-        val secondary = runOnce(fallbackConfigUrl, onProgress)
-        return secondary.outcome ?: throw OoklaFailure(secondary.failure ?: "ookla speedtest failed (fallback)")
     }
 
     private data class Attempt(

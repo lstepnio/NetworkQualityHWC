@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.probes.DefaultProbeFactory
 import com.hotwire.fisiontv.networkqual.cert.probes.ProbeFactory
+import com.hotwire.fisiontv.networkqual.cert.probes.ookla.AndroidPerformanceLocks
 import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaRuntime
 import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaSpeedtestPhase
 import com.hotwire.fisiontv.networkqual.cert.probes.ookla.OoklaSpeedtestRunner
@@ -61,7 +62,8 @@ class CertificationEngine(
             OoklaSpeedtestPhase(
                 runtime = ooklaRuntime,
                 primaryConfigUrl = config.ooklaConfigUrl,
-                fallbackConfigUrl = config.ooklaConfigUrlFallback
+                fallbackConfigUrl = config.ooklaConfigUrlFallback,
+                perfLocks = AndroidPerformanceLocks(context)
             ).run(onProgress)
         },
         collectDiagnostics = { NetworkDiagnosticsCollector.collect(context) }

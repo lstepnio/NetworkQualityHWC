@@ -6,6 +6,16 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!--
+        Held during the Ookla speedtest phase so:
+          - WifiManager.WIFI_MODE_FULL_HIGH_PERF keeps the Wi-Fi radio
+            out of power-save (otherwise the radio doze cycles steal
+            bandwidth and add measurement variance).
+          - PARTIAL_WAKE_LOCK keeps the CPU awake even if the screen
+            powers off mid-test.
+        Released as soon as the phase finishes. ~30s peak hold per cert.
+    -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!--
         Both install permissions are declared. The OS grants whichever
         the signing context allows, and AppUpdateInstaller picks the path
         at runtime — same APK works in both modes:

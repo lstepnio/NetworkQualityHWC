@@ -225,6 +225,48 @@ class RuntimeConfigParserTest {
         assertThat(cfg.healthAssessment).isEqualTo(RuntimeConfigDefaults.bundled.healthAssessment)
     }
 
+    // --- killswitch (contract v2.1.0) ---
+
+    @Test fun `killswitch absent defaults to disabled`() {
+        val cfg = RuntimeConfigParser.parse(sample)
+        assertThat(cfg.killswitch.enabled).isFalse()
+        assertThat(cfg.killswitch.reason).isNull()
+    }
+
+    @Test fun `killswitch enabled with reason parses`() {
+        val withKill = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "killswitch": { "enabled": true, "reason": "Maintenance window" }"""
+        )
+        val cfg = RuntimeConfigParser.parse(withKill)
+        assertThat(cfg.killswitch.enabled).isTrue()
+        assertThat(cfg.killswitch.reason).isEqualTo("Maintenance window")
+    }
+
+    @Test fun `killswitch enabled without reason parses with null reason`() {
+        val withKill = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "killswitch": { "enabled": true }"""
+        )
+        val cfg = RuntimeConfigParser.parse(withKill)
+        assertThat(cfg.killswitch.enabled).isTrue()
+        assertThat(cfg.killswitch.reason).isNull()
+    }
+
+    @Test fun `killswitch malformed fails closed`() {
+        // `enabled` is a number where a boolean is expected — must NOT
+        // accidentally engage the killswitch from a typo.
+        val bad = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "killswitch": { "enabled": "yes please" }"""
+        )
+        val cfg = RuntimeConfigParser.parse(bad)
+        assertThat(cfg.killswitch.enabled).isFalse()
+    }
+
     @Test fun `malformed uploadResults fails closed (kill switch on)`() {
         // endpoint: 42 — number where a string is expected. Parser must
         // not let an upload accidentally fire to whatever toString()

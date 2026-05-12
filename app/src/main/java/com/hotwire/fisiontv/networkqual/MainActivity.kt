@@ -1,6 +1,7 @@
 package com.hotwire.fisiontv.networkqual
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,9 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.hotwire.fisiontv.networkqual.ui.AppRoot
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionTheme
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -22,6 +25,28 @@ class MainActivity : ComponentActivity() {
             hide(WindowInsetsCompat.Type.systemBars())
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
         }
+
+        // Killswitch hook: re-fetch the active cert-config at every
+        // activity launch (the init-time fetch in AppContainer only
+        // fires once per process; for a process that survives a
+        // killswitched-then-recovered cycle we need a fresh ask).
+        // After the fetch resolves, if `killswitch.enabled` is true,
+        // exit cleanly via finishAffinity(). Recovery is automatic —
+        // next launch fetches again.
+        val container = (application as FisionApp).container
+        lifecycleScope.launch {
+            container.refreshCertConfig()
+            val cfg = container.configProvider.current()
+            if (cfg.killswitch.enabled) {
+                Log.w(
+                    TAG,
+                    "killswitch engaged (configVersion=${cfg.configVersion}, " +
+                        "reason=${cfg.killswitch.reason ?: "—"}); exiting"
+                )
+                finishAffinity()
+            }
+        }
+
         setContent {
             FisionTheme {
                 Surface(
@@ -44,5 +69,9 @@ class MainActivity : ComponentActivity() {
         // AppContainer.refreshManifest so a screen-off / screen-on flurry
         // doesn't burn the API.
         (application as FisionApp).container.refreshManifest()
+    }
+
+    companion object {
+        private const val TAG = "MainActivity"
     }
 }

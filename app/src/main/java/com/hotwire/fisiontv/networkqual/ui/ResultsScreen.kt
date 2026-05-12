@@ -111,6 +111,17 @@ fun ResultsScreen(
                 Spacer(Modifier.height(10.dp))
             }
             HealthBadge(result.health)
+            // Configuration miss (non-preferred DNS) is surfaced below the
+            // health badge so the tech sees the verdict first, then the
+            // actionable detail. Hidden in the success (`allPreferred`) and
+            // no-policy (`null`) cases — see DnsResultCard's KDoc.
+            result.dnsAssessment?.takeIf { !it.allPreferred }?.let {
+                Spacer(Modifier.height(10.dp))
+                DnsResultCard(
+                    nonPreferred = it.nonPreferred,
+                    configuredPreferred = it.configuredPreferred
+                )
+            }
         }
     }
 }

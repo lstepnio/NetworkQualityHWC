@@ -32,7 +32,30 @@ class UpdateInstallReceiver : BroadcastReceiver() {
 
         val status = intent.getIntExtra(PackageInstaller.EXTRA_STATUS, -1)
         val message = intent.getStringExtra(PackageInstaller.EXTRA_STATUS_MESSAGE) ?: ""
-        Log.i(TAG, "install broadcast: status=$status message=$message")
+        val sessionId = intent.getIntExtra(PackageInstaller.EXTRA_SESSION_ID, -1)
+        val app = context.applicationContext as? FisionApp
+        val expected = app?.container?.updateInstaller?.expectedSessionId
+        Log.i(TAG, "install broadcast: status=$status session=$sessionId expected=$expected message=$message")
+
+        // Ignore broadcasts from earlier sessions in the same install
+        // flow. PackageInstaller emits one terminal status per session;
+        // if an earlier session failed (e.g. signing-cert mismatch) and
+        // we retried with a different APK, the OS still delivers the old
+        // session's failure broadcast. Without this filter, that stale
+        // failure overwrites the in-flight session's outcome and
+        // MainViewModel logs "install failed" for an install that
+        // actually succeeded. See #44.
+        //
+        // STATUS_PENDING_USER_ACTION is allowed through regardless —
+        // launching the system confirm dialog is idempotent and a stray
+        // pending broadcast from a long-dead session is exceedingly rare
+        // in practice.
+        if (status != PackageInstaller.STATUS_PENDING_USER_ACTION &&
+            expected != null && sessionId != -1 && sessionId != expected
+        ) {
+            Log.i(TAG, "ignoring stale broadcast: session=$sessionId expected=$expected")
+            return
+        }
 
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
@@ -58,6 +81,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
             }
             PackageInstaller.STATUS_SUCCESS -> {
                 publishStatus(context, InstallStatus.Success)
+                app?.container?.updateInstaller?.clearExpectedSessionId()
                 // On success the OS replaces the app process; the resume
                 // flag set before commit() drives auto-start of the cert
                 // when the new process boots.
@@ -68,6 +92,7 @@ class UpdateInstallReceiver : BroadcastReceiver() {
                 // OS-provided message so the tech sees why.
                 val reason = mapFailureStatus(status) + if (message.isNotBlank()) " — $message" else ""
                 publishStatus(context, InstallStatus.Failed(reason))
+                app?.container?.updateInstaller?.clearExpectedSessionId()
             }
         }
     }

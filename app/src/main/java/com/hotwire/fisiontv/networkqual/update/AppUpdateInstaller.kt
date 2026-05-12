@@ -54,8 +54,17 @@ class AppUpdateInstaller(private val context: Context) {
      * SUCCESS / FAILURE arrive later as broadcasts to [UpdateInstallReceiver].
      */
     sealed interface BeginOutcome {
-        /** Session created and bytes committed. Watch the receiver for the actual install result. */
-        data object Pending : BeginOutcome
+        /**
+         * Session created and bytes committed. Watch the receiver for the
+         * actual install result.
+         *
+         * `sessionId` is the [PackageInstaller] session id this attempt
+         * just committed. The receiver filters broadcasts on this id —
+         * otherwise a stale failure broadcast from an earlier session in
+         * the same install flow (e.g. signing-cert mismatch retry) can
+         * masquerade as the outcome of the current attempt. See #44.
+         */
+        data class Pending(val sessionId: Int) : BeginOutcome
 
         /** Pre-install verification failed; no install was attempted. */
         data class Refused(val reason: String) : BeginOutcome
@@ -183,7 +192,29 @@ class AppUpdateInstaller(private val context: Context) {
             return BeginOutcome.Failed("commit: ${t::class.simpleName}: ${t.message}")
         }
 
-        return BeginOutcome.Pending
+        expectedSessionId = sessionId
+        return BeginOutcome.Pending(sessionId)
+    }
+
+    /**
+     * The [PackageInstaller] session id of the most recent successful
+     * [beginInstall] commit, or `null` before the first commit. Read by
+     * [UpdateInstallReceiver] to filter out broadcasts from earlier
+     * sessions whose terminal status would otherwise overwrite the
+     * outcome of the in-flight one. Volatile because the receiver runs on
+     * the main thread while commit happens on a worker. See #44.
+     */
+    @Volatile
+    var expectedSessionId: Int? = null
+        private set
+
+    /**
+     * Clears the latched session id. The receiver calls this on the
+     * terminal status for the matching session so a subsequent install
+     * starts from a clean slate.
+     */
+    fun clearExpectedSessionId() {
+        expectedSessionId = null
     }
 
     /**

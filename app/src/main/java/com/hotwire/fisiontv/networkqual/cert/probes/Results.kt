@@ -35,18 +35,7 @@ data class LatencyResult(
     val jitterMs: Long,
     val attempted: Int,
     val lossPct: Int
-) {
-    companion object {
-        val UNAVAILABLE = LatencyResult(
-            samples = emptyList(),
-            medianMs = Long.MAX_VALUE,
-            p95Ms = Long.MAX_VALUE,
-            jitterMs = Long.MAX_VALUE,
-            attempted = 0,
-            lossPct = 100
-        )
-    }
-}
+)
 
 data class ThroughputResult(
     val steadyMbps: Double,

@@ -33,9 +33,9 @@ class OkHttpResultPublisher(
     /** Injectable so tests get a deterministic schedule; production uses
      *  a single shared instance across attempts. */
     private val random: Random = Random()
-) : ResultPublisher {
+) {
 
-    override suspend fun publish(result: CertificationResult): PublishOutcome =
+    suspend fun publish(result: CertificationResult): PublishOutcome =
         withContext(Dispatchers.IO) {
             val body = CertificationPayload.toJson(result).toString()
                 .toRequestBody("application/json".toMediaType())

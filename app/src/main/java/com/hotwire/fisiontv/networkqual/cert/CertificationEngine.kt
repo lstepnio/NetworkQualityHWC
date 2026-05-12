@@ -42,7 +42,14 @@ class CertificationEngine(
     private val collectDiagnostics: () -> NetworkDiagnostics,
     private val tierEvaluator: TierEvaluator = TierEvaluator(config.tiers),
     private val healthAssessor: HealthAssessor = HealthAssessor(config.tiers, config.healthAssessment),
-    private val wifiAssessor: WifiLinkQualityAssessor = WifiLinkQualityAssessor(config.wifiLinkQuality)
+    private val wifiAssessor: WifiLinkQualityAssessor = WifiLinkQualityAssessor(config.wifiLinkQuality),
+    /**
+     * Optional. When provided, the engine sandwiches the Ookla phase
+     * between two [EnvironmentSnapshot]s (start + end) so the payload
+     * records the thermal + CPU + Wi-Fi state across the measurement
+     * window. Null in tests that don't need this signal.
+     */
+    private val environmentCollector: EnvironmentSnapshotCollector? = null
 ) {
 
     /**
@@ -66,7 +73,8 @@ class CertificationEngine(
                 perfLocks = AndroidPerformanceLocks(context)
             ).run(onProgress)
         },
-        collectDiagnostics = { NetworkDiagnosticsCollector.collect(context) }
+        collectDiagnostics = { NetworkDiagnosticsCollector.collect(context) },
+        environmentCollector = EnvironmentSnapshotCollector(context)
     )
 
     private class HaltSignal : Throwable() {
@@ -122,12 +130,19 @@ class CertificationEngine(
 
             val dns = phase(TestStep.DNS) { progress -> probes.dnsProbe().run(progress) }
 
+            // Sandwich the speedtest phase between two environment
+            // snapshots. Cheap (~ms; sysfs reads + system-service calls)
+            // and lets support post-hoc correlate throughput variance with
+            // thermal status, CPU frequency, and Wi-Fi link drift.
+            val envStart = environmentCollector?.snapshot()
+
             // One Ookla execution covers server selection + ping + download
             // + upload. Sub-progress within the run is mapped onto this
             // phase's overall slice (see OoklaSpeedtestPhase).
             val ookla = phase(TestStep.SPEEDTEST) { progress ->
                 this@CertificationEngine.ookla(progress)
             }
+            val envEnd = environmentCollector?.snapshot()
             val server = ookla.server
             val serverProbes = listOf(
                 ServerProbe(
@@ -166,7 +181,9 @@ class CertificationEngine(
                 tierBreakdown = outcome.breakdown,
                 diagnostics = diagnostics,
                 health = health,
-                wifiLink = wifiLink
+                wifiLink = wifiLink,
+                environmentAtSpeedtestStart = envStart,
+                environmentAtSpeedtestEnd = envEnd
             )
             logSummary(result)
             CertificationPayload.logJson(result)

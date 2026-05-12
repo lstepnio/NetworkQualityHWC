@@ -38,7 +38,15 @@ data class CertificationResult(
     val tierBreakdown: List<TierEvaluation>,
     val diagnostics: NetworkDiagnostics,
     val health: HealthAssessment,
-    val wifiLink: WifiLinkQuality?
+    val wifiLink: WifiLinkQuality?,
+    /**
+     * Device + radio state captured immediately before / after the
+     * speedtest phase. Used post-hoc to correlate throughput variance
+     * with thermal status, CPU frequency, or Wi-Fi link drift. Nullable
+     * so tests can construct without wiring an Android Context.
+     */
+    val environmentAtSpeedtestStart: EnvironmentSnapshot? = null,
+    val environmentAtSpeedtestEnd: EnvironmentSnapshot? = null
 )
 
 data class ServerProbe(

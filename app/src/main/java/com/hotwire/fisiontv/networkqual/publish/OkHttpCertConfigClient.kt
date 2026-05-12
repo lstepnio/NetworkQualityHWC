@@ -23,6 +23,17 @@ class OkHttpCertConfigClient(
     private val authProvider: AuthProvider,
     private val deviceId: String,
     private val appVersion: String,
+    /**
+     * Device-targeting hints. Sent as `X-Device-Manufacturer`,
+     * `X-Device-Model`, `X-Device-Build-Fingerprint` so the backend can
+     * resolve a per-device-targeted cert-config. Empty strings are dropped
+     * (header is omitted entirely) — empty/missing both mean "no selector"
+     * server-side. These values are hints only and intentionally NOT
+     * included in the HMAC canonical request signed by [authProvider].
+     */
+    private val manufacturer: String = "",
+    private val model: String = "",
+    private val buildFingerprint: String = "",
     private val schemaVersion: Int = 1,
     private val client: OkHttpClient = OkHttpResultPublisher.defaultClient(),
     private val parser: RuntimeConfigParser = RuntimeConfigParser
@@ -38,6 +49,9 @@ class OkHttpCertConfigClient(
             .addHeader("X-Device-Id", deviceId)
             .addHeader("X-App-Version", appVersion)
             .addHeader("X-Schema-Version", schemaVersion.toString())
+        if (manufacturer.isNotEmpty()) builder.addHeader("X-Device-Manufacturer", manufacturer)
+        if (model.isNotEmpty()) builder.addHeader("X-Device-Model", model)
+        if (buildFingerprint.isNotEmpty()) builder.addHeader("X-Device-Build-Fingerprint", buildFingerprint)
         cachedEtag?.let { builder.addHeader("If-None-Match", it) }
         if (authHeader != null) builder.addHeader("Authorization", authHeader)
         val req = builder.build()

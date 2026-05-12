@@ -39,7 +39,13 @@ data class NetworkInfo(
     val privateIp: String?,
     val gatewayIp: String?,
     val dnsServers: List<String>,
-    val dhcp: DhcpInfo?
+    val dhcp: DhcpInfo?,
+    // Populated post-Ookla from the binary's externalIp / publicIp field
+    // (see CertificationEngine.kt). Null until the speedtest runs, and
+    // null on STBs where the Ookla outcome didn't surface a value. The
+    // payload serializer emits this under `network.publicIp` for the
+    // backend's per-IP support workflows.
+    val publicIp: String? = null
 )
 
 data class DhcpInfo(

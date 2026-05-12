@@ -272,7 +272,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // 3. Commit install. Pending → caller will park in Installing state
         //    and wait for the receiver's Success/Failed.
         return when (val b = container.updateInstaller.beginInstall(file, manifest)) {
-            AppUpdateInstaller.BeginOutcome.Pending -> UpdateAttempt.Success
+            is AppUpdateInstaller.BeginOutcome.Pending -> UpdateAttempt.Success
             is AppUpdateInstaller.BeginOutcome.Refused -> {
                 Log.w(TAG, "pre-cert install refused: ${b.reason}")
                 UpdateAttempt.Permanent

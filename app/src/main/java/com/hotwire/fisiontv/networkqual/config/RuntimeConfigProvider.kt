@@ -1,28 +1,32 @@
 package com.hotwire.fisiontv.networkqual.config
 
 import android.util.Log
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 
 /**
  * Single-process accessor for the runtime config.
  *
- * Today returns [RuntimeConfigDefaults.bundled]. The contract for the future
- * remote-fetch path:
+ * Today seeds with [RuntimeConfigDefaults.bundled]. Remote-fetch contract:
  *
- *   - On every [current] call the cached config is returned synchronously.
- *   - A separate refresh routine (TBD; placement here keeps the seam clean)
- *     fetches `GET /v1/cert-config`, validates it (constructing the
- *     [RuntimeConfig] runs all `require(...)` checks), and atomically swaps
- *     [cached] only if the parsed config's `schemaVersion <=` what the app
- *     understands. Higher schemaVersion → ignore and stay on bundled.
- *   - Any exception during fetch or parse is logged and the previous cached
- *     copy stays in effect.
+ *   - [current] returns the cached config synchronously.
+ *   - [flow] emits the cached config whenever it changes. UI components
+ *     observe this to react when the remote config lands (e.g. the
+ *     configVersion footer next to the app version).
+ *   - A refresh routine in [com.hotwire.fisiontv.networkqual.AppContainer]
+ *     fetches `GET /v1/cert-config`, validates it via [RuntimeConfig]'s
+ *     `init` checks, and atomically swaps the cache only if the parsed
+ *     config's `schemaVersion <=` what the app understands.
+ *   - Any exception during fetch or parse is logged and the previous
+ *     cached copy stays in effect.
  */
 class RuntimeConfigProvider {
 
-    @Volatile
-    private var cached: RuntimeConfig = RuntimeConfigDefaults.bundled
+    private val _flow = MutableStateFlow(RuntimeConfigDefaults.bundled)
+    val flow: StateFlow<RuntimeConfig> = _flow.asStateFlow()
 
-    fun current(): RuntimeConfig = cached
+    fun current(): RuntimeConfig = _flow.value
 
     /**
      * Apply a freshly-fetched remote config. Validates by virtue of
@@ -35,7 +39,7 @@ class RuntimeConfigProvider {
                 Log.w(TAG, "rejecting remote config: schemaVersion ${candidate.schemaVersion} > supported ${RuntimeConfigDefaults.bundled.schemaVersion}")
                 false
             } else {
-                cached = candidate
+                _flow.value = candidate
                 Log.i(TAG, "applied remote config ${candidate.configVersion} (schema=${candidate.schemaVersion})")
                 true
             }

@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -75,6 +76,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     /** Exposed for the always-visible version footer in [com.hotwire.fisiontv.networkqual.ui.AppRoot]. */
     val installedVersionName: String = container.installedVersionName
+
+    /**
+     * Live config version. Footer displays this next to [installedVersionName]
+     * so a support call can sanity-check that the STB picked up the most
+     * recent cert-config (vs. still on bundled defaults after a parse
+     * failure). Updates synchronously when [configProvider.apply] swaps
+     * the cached config.
+     */
+    val configVersion: StateFlow<String> = configProvider.flow
+        .map { it.configVersion }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, configProvider.current().configVersion)
 
     private var runJob: Job? = null
 

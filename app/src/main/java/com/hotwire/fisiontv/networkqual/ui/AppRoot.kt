@@ -16,6 +16,7 @@ import com.hotwire.fisiontv.networkqual.MainViewModel
 @Composable
 fun AppRoot(viewModel: MainViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
+    val configVersion by viewModel.configVersion.collectAsStateWithLifecycle()
 
     Box(modifier = Modifier.fillMaxSize()) {
         when (val s = state) {
@@ -43,13 +44,15 @@ fun AppRoot(viewModel: MainViewModel) {
             )
         }
 
-        // Always-visible build label in the bottom-right corner.
-        // After the auto-update pipeline lands a new version and the OS
-        // replaces the app process, the tech sees the version flip here —
-        // the only on-screen signal that the update happened. Also useful
-        // for support ("what version are you on?").
+        // Always-visible build + cert-config label in the bottom-right
+        // corner. After the auto-update pipeline lands a new APK the
+        // appVer flips here — the only on-screen signal that the update
+        // happened. The trailing /configVer flips when the remote
+        // cert-config arrives, so support can verify the STB picked up
+        // the latest server-side tuning (vs. silently falling back to
+        // bundled defaults on a parse failure).
         Text(
-            text = "v${viewModel.installedVersionName}",
+            text = "v${viewModel.installedVersionName} / $configVersion",
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
             modifier = Modifier

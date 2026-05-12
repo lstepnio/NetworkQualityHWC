@@ -165,9 +165,21 @@ class CertificationEngine(
                 probes.playbackProbe().run(progress)
             }
 
+            // Enrich the pre-flight diagnostics with the public IP the
+            // Ookla binary surfaced (its `externalIp` field, parsed in
+            // OoklaSpeedtestRunner). Pre-flight can't know this without
+            // its own external lookup; the speedtest covers it for free.
+            // Empty string from Ookla → null (cleaner JSON serialization
+            // via putOrNull).
+            val enrichedDiagnostics = diagnostics.copy(
+                network = diagnostics.network.copy(
+                    publicIp = ookla.publicIp.ifEmpty { null }
+                )
+            )
+
             val outcome = tierEvaluator.evaluate(ookla.latency, ookla.download, playback)
             val health = healthAssessor.assess(outcome.networkAchieved, ookla.download, ookla.latency)
-            val wifiLink = diagnostics.wifi?.let { wifiAssessor.assess(it) }
+            val wifiLink = enrichedDiagnostics.wifi?.let { wifiAssessor.assess(it) }
 
             val result = CertificationResult(
                 certificationId = certificationId,
@@ -185,7 +197,7 @@ class CertificationEngine(
                 upload = ookla.upload,
                 playback = playback,
                 tierBreakdown = outcome.breakdown,
-                diagnostics = diagnostics,
+                diagnostics = enrichedDiagnostics,
                 health = health,
                 wifiLink = wifiLink,
                 environmentAtSpeedtestStart = envStart,

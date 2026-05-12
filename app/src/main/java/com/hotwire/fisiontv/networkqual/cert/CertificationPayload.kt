@@ -204,6 +204,7 @@ object CertificationPayload {
         putOrNull("linkDownstreamKbps", d.network.linkDownstreamKbps)
         putOrNull("linkUpstreamKbps", d.network.linkUpstreamKbps)
         putOrNull("privateIp", d.network.privateIp)
+        putOrNull("publicIp", d.network.publicIp)
         putOrNull("gatewayIp", d.network.gatewayIp)
         put("dnsServers", JSONArray(d.network.dnsServers))
         d.network.dhcp?.let {

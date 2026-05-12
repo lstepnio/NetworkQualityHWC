@@ -1,19 +1,6 @@
 package com.hotwire.fisiontv.networkqual.publish
 
-import com.hotwire.fisiontv.networkqual.cert.CertificationResult
 import com.hotwire.fisiontv.networkqual.config.RuntimeConfig
-
-/**
- * Posts a finished certification to the backend at /v1/certifications.
- *
- * Idempotent on [CertificationResult.certificationId]; the server treats a
- * duplicate POST with matching payload hash as success. Implementations
- * must retry [PublishOutcome.TransientFailure] cases internally with
- * bounded backoff before surfacing them to the caller.
- */
-interface ResultPublisher {
-    suspend fun publish(result: CertificationResult): PublishOutcome
-}
 
 /**
  * Fetches the runtime config from /v1/cert-config.

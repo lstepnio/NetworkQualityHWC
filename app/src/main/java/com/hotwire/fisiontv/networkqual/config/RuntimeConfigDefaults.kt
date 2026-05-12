@@ -22,8 +22,15 @@ object RuntimeConfigDefaults {
             OoklaServer(id = "nc",   name = "North Carolina",   host = "speedtestnc.gethotwired.com")
         ),
         tests = TestsConfig(
-            download = ThroughputPhaseConfig(durationSec = 10, parallel = 4, perRequestBytes = 100_000_000L, warmupFraction = 0.33),
-            upload   = ThroughputPhaseConfig(durationSec = 5,  parallel = 2, perRequestBytes = 50_000_000L,  warmupFraction = 0.33),
+            // Parallel-stream counts document the empirically-best values
+            // from a 78-trial conn-range sweep on the lab STB. The Ookla
+            // binary doesn't actually read these from cert-config — they're
+            // enforced on the binary CLI via --download-conn-range /
+            // --upload-conn-range in OoklaSpeedtestRunner. Kept here so
+            // cert-config matches reality and future tooling can pick
+            // these up.
+            download = ThroughputPhaseConfig(durationSec = 10, parallel = 8,  perRequestBytes = 100_000_000L, warmupFraction = 0.33),
+            upload   = ThroughputPhaseConfig(durationSec = 5,  parallel = 16, perRequestBytes = 50_000_000L,  warmupFraction = 0.33),
             latency  = LatencyPhaseConfig(samples = 10, timeoutMs = 2_000),
             playback = PlaybackPhaseConfig(
                 manifestUrl = "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd",

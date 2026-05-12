@@ -55,15 +55,18 @@ class OoklaSpeedtestRunner(
                 "-c", configUrl,
                 "--ca-certificate", runtime.caBundlePath,
                 "-f", "jsonl",
-                // Force the binary to ping each server in the embed pool
-                // and pick the one with lowest latency. Without this flag
-                // it picks the FIRST server in the embed-config response,
-                // which is order-of-list — not lowest-latency. We caught
-                // this in the field: a Florida lab was consistently being
-                // routed to Dallas (188ms) instead of Miami (77ms),
-                // driving large download-throughput variance run-to-run.
-                // The flag adds <1s of probing per cert; well worth it.
-                "--selection-details"
+                // Emit the diagnostic serverSelection event in the output
+                // stream. Doesn't change selection behavior (the binary
+                // picks the lowest-latency server either way) — but lets
+                // future tooling correlate why a server was chosen.
+                "--selection-details",
+                // Empirically determined on the lab STB (78 trials, 17
+                // configs, ~42min). Default auto-tune produces wildly
+                // inconsistent results (DL rel. variance 17.3%, UL 62.5%);
+                // pinning both ranges drops the binary to DL 1.7% / UL 6.0%
+                // variance AND raises throughput +10% DL / +45% UL.
+                "--download-conn-range=8",
+                "--upload-conn-range=16"
             ).redirectErrorStream(true).start()
         } catch (t: Throwable) {
             trySend(OoklaEvent.Failed("spawn: ${t::class.simpleName}: ${t.message}"))

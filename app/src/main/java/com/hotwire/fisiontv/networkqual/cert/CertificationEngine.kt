@@ -43,6 +43,7 @@ class CertificationEngine(
     private val tierEvaluator: TierEvaluator = TierEvaluator(config.tiers),
     private val healthAssessor: HealthAssessor = HealthAssessor(config.tiers, config.healthAssessment),
     private val wifiAssessor: WifiLinkQualityAssessor = WifiLinkQualityAssessor(config.wifiLinkQuality),
+    private val dnsAssessor: DnsAssessor = DnsAssessor(),
     /**
      * Optional. When provided, the engine sandwiches the Ookla phase
      * between two [EnvironmentSnapshot]s (start + end) so the payload
@@ -180,6 +181,14 @@ class CertificationEngine(
             val outcome = tierEvaluator.evaluate(ookla.latency, ookla.download, playback)
             val health = healthAssessor.assess(outcome.networkAchieved, ookla.download, ookla.latency)
             val wifiLink = enrichedDiagnostics.wifi?.let { wifiAssessor.assess(it) }
+            // dnsAssessment is config-driven: only computed when the
+            // operator declared a `dnsPolicy`. Null policy → null
+            // assessment → field omitted from the payload (see
+            // CertificationPayload.toJson). Strict literal match;
+            // operator semantics live in the cert-config, not here.
+            val dnsAssessment = config.dnsPolicy?.let {
+                dnsAssessor.assess(it, enrichedDiagnostics.network.dnsServers)
+            }
 
             val result = CertificationResult(
                 certificationId = certificationId,
@@ -201,7 +210,8 @@ class CertificationEngine(
                 health = health,
                 wifiLink = wifiLink,
                 environmentAtSpeedtestStart = envStart,
-                environmentAtSpeedtestEnd = envEnd
+                environmentAtSpeedtestEnd = envEnd,
+                dnsAssessment = dnsAssessment
             )
             logSummary(result)
             CertificationPayload.logJson(result)

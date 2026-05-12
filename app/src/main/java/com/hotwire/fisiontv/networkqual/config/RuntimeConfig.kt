@@ -50,7 +50,19 @@ data class RuntimeConfig(
      * config so a CA bundle issue doesn't black out the cert. Set to
      * null to disable fallback.
      */
-    val ooklaConfigUrlFallback: String? = null
+    val ooklaConfigUrlFallback: String? = null,
+    /**
+     * Optional DNS-policy declaration. When non-null, the cert engine
+     * compares the STB's actual `network.dnsServers` against
+     * [DnsPolicyConfig.preferredServers] and emits a `dnsAssessment`
+     * block on the payload. Null → no assessment computed, no field
+     * emitted. Operators that don't care about DNS posture pay nothing.
+     *
+     * Matching is **strict** (every actual server must be in the list)
+     * and **literal** (string-equality, not CIDR / hostname / wildcard).
+     * See `cert/DnsAssessor`.
+     */
+    val dnsPolicy: DnsPolicyConfig? = null
 ) {
     init {
         require(schemaVersion > 0) { "schemaVersion must be positive" }
@@ -142,3 +154,21 @@ data class KillswitchConfig(
     val enabled: Boolean,
     val reason: String? = null
 )
+
+/**
+ * Operator-declared list of nameservers the fleet is expected to use.
+ * The cert engine compares actual `network.dnsServers` literally
+ * (byte-for-byte; no CIDR / hostname / wildcard) against this list and
+ * emits `CertificationResult.dnsAssessment`.
+ *
+ * Per-field tolerance in the parser keeps a config with an empty or
+ * malformed `dnsPolicy` block usable — invalid policy degrades to "no
+ * policy" (null) rather than rejecting the whole config.
+ */
+data class DnsPolicyConfig(
+    val preferredServers: List<String>
+) {
+    init {
+        require(preferredServers.isNotEmpty()) { "preferredServers must not be empty" }
+    }
+}

@@ -267,6 +267,70 @@ class RuntimeConfigParserTest {
         assertThat(cfg.killswitch.enabled).isFalse()
     }
 
+    // --- dnsPolicy (contract v2.3.0)
+    //
+    // Optional top-level block. Per-field tolerance: a missing,
+    // malformed, or empty policy degrades to null (no assessment); it
+    // must NOT poison the rest of the config.
+
+    @Test fun `dnsPolicy absent yields null policy`() {
+        val cfg = RuntimeConfigParser.parse(sample)
+        assertThat(cfg.dnsPolicy).isNull()
+    }
+
+    @Test fun `dnsPolicy with non-empty preferredServers parses`() {
+        val withDns = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "dnsPolicy": { "preferredServers": ["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"] }"""
+        )
+        val cfg = RuntimeConfigParser.parse(withDns)
+        assertThat(cfg.dnsPolicy).isNotNull()
+        assertThat(cfg.dnsPolicy!!.preferredServers)
+            .containsExactly("1.1.1.1", "8.8.8.8", "2606:4700:4700::1111").inOrder()
+    }
+
+    @Test fun `dnsPolicy with empty preferredServers degrades to null`() {
+        // Operator-misconfig: an empty array would mean "every actual
+        // server is non-preferred" which is almost certainly not what
+        // they meant. Treat as no-policy and let the rest of the config
+        // load.
+        val withEmpty = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "dnsPolicy": { "preferredServers": [] }"""
+        )
+        val cfg = RuntimeConfigParser.parse(withEmpty)
+        assertThat(cfg.dnsPolicy).isNull()
+        // Sibling fields still parsed fine.
+        assertThat(cfg.resultsPublishing.enabled).isTrue()
+    }
+
+    @Test fun `dnsPolicy with non-string entry degrades to null`() {
+        val bad = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "dnsPolicy": { "preferredServers": ["1.1.1.1", 42] }"""
+        )
+        val cfg = RuntimeConfigParser.parse(bad)
+        assertThat(cfg.dnsPolicy).isNull()
+    }
+
+    @Test fun `dnsPolicy with wrong shape degrades to null without poisoning siblings`() {
+        // preferredServers is a string instead of an array — exactly the
+        // shape a dashboard typo would produce.
+        val bad = sample.replace(
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" }""",
+            """"uploadResults": { "enabled": true, "endpoint": "https://api.example/v1/certifications" },
+            "dnsPolicy": { "preferredServers": "1.1.1.1" }"""
+        )
+        val cfg = RuntimeConfigParser.parse(bad)
+        assertThat(cfg.dnsPolicy).isNull()
+        // Kill switch and the rest of the config survive.
+        assertThat(cfg.resultsPublishing.enabled).isTrue()
+        assertThat(cfg.tiers).isNotEmpty()
+    }
+
     @Test fun `malformed uploadResults fails closed (kill switch on)`() {
         // endpoint: 42 — number where a string is expected. Parser must
         // not let an upload accidentally fire to whatever toString()

@@ -46,7 +46,16 @@ data class CertificationResult(
      * so tests can construct without wiring an Android Context.
      */
     val environmentAtSpeedtestStart: EnvironmentSnapshot? = null,
-    val environmentAtSpeedtestEnd: EnvironmentSnapshot? = null
+    val environmentAtSpeedtestEnd: EnvironmentSnapshot? = null,
+    /**
+     * Verdict on the STB's actual DNS nameservers vs the cert-config's
+     * `dnsPolicy.preferredServers`. Non-null only when the active config
+     * declared a policy; null otherwise (and the field is omitted from
+     * the JSON payload). Pre-v2.3.0 clients never populate this — the
+     * backend / dashboard treat absence as "no judgment made" rather
+     * than "all preferred".
+     */
+    val dnsAssessment: DnsAssessment? = null
 )
 
 data class ServerProbe(

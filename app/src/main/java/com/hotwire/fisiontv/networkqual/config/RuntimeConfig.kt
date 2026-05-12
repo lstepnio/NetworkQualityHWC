@@ -17,8 +17,6 @@ import com.hotwire.fisiontv.networkqual.cert.TierThreshold
 data class RuntimeConfig(
     val schemaVersion: Int,
     val configVersion: String,
-    /** Legacy candidate list — only used if Ookla integration is disabled. */
-    val servers: List<OoklaServer>,
     val tests: TestsConfig,
     val tiers: List<TierThreshold>,
     val dnsProbeHosts: List<String>,
@@ -26,10 +24,11 @@ data class RuntimeConfig(
     val wifiLinkQuality: WifiLinkQualityConfig,
     val resultsPublishing: ResultsPublishingConfig,
     /**
-     * Hosted-config URL for the Ookla embedded SDK. When non-blank, the
-     * engine routes server selection + latency + download + upload through
-     * the Ookla binary using this URL. Should be HTTPS in production with
-     * the bundled CA cert; HTTP is acceptable for lab/dev only.
+     * Hosted-config URL for the Ookla embedded SDK. The binary fetches
+     * the server list + per-phase durations + sample counts from this
+     * URL — that's why none of those values live in cert-config
+     * anymore. Should be HTTPS in production with the bundled CA cert;
+     * HTTP is acceptable for lab/dev only.
      */
     val ooklaConfigUrl: String,
     /**
@@ -44,11 +43,8 @@ data class RuntimeConfig(
     init {
         require(schemaVersion > 0) { "schemaVersion must be positive" }
         require(configVersion.isNotBlank()) { "configVersion must not be blank" }
-        require(servers.isNotEmpty()) { "servers must not be empty" }
         require(tiers.isNotEmpty()) { "tiers must not be empty" }
         require(dnsProbeHosts.isNotEmpty()) { "dnsProbeHosts must not be empty" }
-        val ids = servers.map { it.id }
-        require(ids.toSet().size == ids.size) { "server ids must be unique: $ids" }
         require(ooklaConfigUrl.isNotBlank()) { "ooklaConfigUrl must not be blank" }
     }
 }
@@ -56,35 +52,21 @@ data class RuntimeConfig(
 data class TestsConfig(
     val download: ThroughputPhaseConfig,
     val upload: ThroughputPhaseConfig,
-    val latency: LatencyPhaseConfig,
     val playback: PlaybackPhaseConfig
 )
 
+/**
+ * The only knob we control in throughput phases is the TCP stream
+ * count — passed to libookla.so as `--download-conn-range` /
+ * `--upload-conn-range`. Duration, chunk sizing, and warmup are all
+ * baked into the Ookla embed-config (and were removed from this type
+ * in contract v1.4.0).
+ */
 data class ThroughputPhaseConfig(
-    val durationSec: Int,
-    val parallel: Int,
-    val perRequestBytes: Long,
-    val warmupFraction: Double
+    val parallel: Int
 ) {
     init {
-        require(durationSec in 1..120) { "durationSec out of range: $durationSec" }
         require(parallel in 1..16) { "parallel out of range: $parallel" }
-        require(perRequestBytes in 1_000_000L..2_000_000_000L) {
-            "perRequestBytes out of range: $perRequestBytes"
-        }
-        require(warmupFraction in 0.0..0.9) {
-            "warmupFraction out of range: $warmupFraction"
-        }
-    }
-}
-
-data class LatencyPhaseConfig(
-    val samples: Int,
-    val timeoutMs: Int
-) {
-    init {
-        require(samples in 3..100) { "samples out of range: $samples" }
-        require(timeoutMs in 100..30_000) { "timeoutMs out of range: $timeoutMs" }
     }
 }
 

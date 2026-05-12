@@ -20,25 +20,6 @@ val FisionHealthGood = Color(0xFFEAB308)
 val FisionHealthMarginal = Color(0xFFF97316)
 val FisionHealthFailed = Color(0xFFEF4444)
 
-// ── Results-screen v8 design tokens ────────────────────────────────────
-// Ported verbatim from contract/diagnostic-mockup-v8.html — keep them
-// here so a future mockup revision is a one-file diff. The CSS root vars
-// the mockup defines map straight across.
-val FisionV8BgGradFrom = Color(0xFF0A1F3D)              // --bg-grad-from
-val FisionV8BgGradTo = Color(0xFF18406E)                // --bg-grad-to
-val FisionV8TextPrimary = Color(0xFFFFFFFF)             // --text-primary
-val FisionV8TextSecondary = Color(0xFFB8CCE6)           // --text-secondary
-val FisionV8TextTertiary = Color(0xFF7D97B8)            // --text-tertiary
-val FisionV8TileBg = Color(0x0FFFFFFF)                  // --tile-bg (6% white)
-val FisionV8TileBorder = Color(0x1AFFFFFF)              // --tile-border (10% white)
-val FisionV8StatusGoodFg = Color(0xFF4ADE80)            // --status-good-fg
-val FisionV8StatusGoodBg = Color(0x2E4ADE80)            // --status-good-bg (~18% green)
-val FisionV8StatusWarnFg = Color(0xFFFBBF24)            // --status-warn-fg
-val FisionV8StatusWarnBg = Color(0x2EFBBF24)            // --status-warn-bg
-val FisionV8StatusFailFg = Color(0xFFF87171)            // --status-fail-fg
-val FisionV8StatusFailBg = Color(0x33F87171)            // --status-fail-bg (~20%)
-val FisionV8CertAccent = Color(0xFF4ADE80)              // --cert-accent
-
 private val FisionColors = darkColorScheme(
     primary = FisionPink,
     onPrimary = Color.White,

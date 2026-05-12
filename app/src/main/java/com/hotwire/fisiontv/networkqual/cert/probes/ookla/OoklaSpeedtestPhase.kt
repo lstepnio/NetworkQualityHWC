@@ -112,6 +112,30 @@ class OoklaSpeedtestPhase(
         val resolvedServer = server ?: return Attempt(null, "no testStart event", started)
         val resolved = lastResult ?: return Attempt(null, "no result event", started)
 
+        // Sanity-check before declaring success. libookla normally emits a
+        // `result` line ONLY on full completion + exits non-zero on partial
+        // failures (which become OoklaEvent.Failed → handled above). But we
+        // don't control the binary — if it ever emits a `result` line with
+        // a zeroed phase (a partial test that internally aborted but didn't
+        // set a non-zero exit code), the certification engine would record
+        // it as a real measurement. Refuse instead and surface a Failed
+        // event so the cert run is unambiguously marked broken rather than
+        // recording 0 Mbps as a "passing" upload.
+        if (resolved.downloadBytesPerSec <= 0L || resolved.uploadBytesPerSec <= 0L) {
+            return Attempt(
+                outcome = null,
+                failure = "ookla result missing throughput (dl=${resolved.downloadBytesPerSec} ul=${resolved.uploadBytesPerSec})",
+                startedBeforeFailure = started
+            )
+        }
+        if (resolved.pingMedianMs <= 0.0) {
+            return Attempt(
+                outcome = null,
+                failure = "ookla result missing latency (medianMs=${resolved.pingMedianMs})",
+                startedBeforeFailure = started
+            )
+        }
+
         return Attempt(
             outcome = OoklaSpeedtestOutcome(
                 server = OoklaServer(

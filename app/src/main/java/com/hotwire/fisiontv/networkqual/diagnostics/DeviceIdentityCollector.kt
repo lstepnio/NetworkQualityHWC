@@ -14,9 +14,27 @@ private const val KEY_DEVICE_ID = "device_id"
 object DeviceIdentityCollector {
 
     /**
-     * Stable per-install UUID, persisted in app private storage. Exposed so
-     * pre-cert-run callers (cert-config fetch on launch) can include
-     * `X-Device-Id` without first running [collect].
+     * Stable **per-install** UUID, persisted in app private storage.
+     * Exposed so pre-cert-run callers (cert-config fetch on launch) can
+     * include `X-Device-Id` without first running [collect].
+     *
+     * NOTE: this is NOT a per-device identifier. It identifies one
+     * **app install** — a fresh UUID is minted any time the app's data
+     * dir is missing this key, which happens on:
+     *   - fresh install (uninstall → install),
+     *   - `pm clear` / "Clear data" from Settings,
+     *   - factory reset,
+     *   - `adb install` without `-r` on a build whose signing cert
+     *     doesn't match the previously-installed one (Android forces
+     *     uninstall first).
+     *
+     * `adb install -r` and OTA updates preserve the data dir, so the
+     * deviceId survives those. Within one install, the value is stable
+     * across reboots, process restarts, and screen-off cycles.
+     *
+     * For "this physical STB across its lifetime", join on HSN
+     * ([DeviceIdentity.hsn]) — that's the stable hardware identity and
+     * what the dashboard groups on.
      */
     fun deviceId(context: Context): String = stableDeviceId(context)
 

@@ -3,6 +3,7 @@ package com.hotwire.fisiontv.networkqual.publish
 import android.util.Log
 import com.hotwire.fisiontv.networkqual.cert.Tier
 import com.hotwire.fisiontv.networkqual.cert.TierThreshold
+import com.hotwire.fisiontv.networkqual.config.DnsPolicyConfig
 import com.hotwire.fisiontv.networkqual.config.HealthAssessmentConfig
 import com.hotwire.fisiontv.networkqual.config.KillswitchConfig
 import com.hotwire.fisiontv.networkqual.config.PlaybackPhaseConfig
@@ -63,8 +64,46 @@ object RuntimeConfigParser {
             wifiLinkQuality = parseWifiLinkQualitySafe(o.optJSONObject("wifiLinkQuality"), defaults.wifiLinkQuality),
             resultsPublishing = publishing,
             killswitch = parseKillswitchSafe(o.optJSONObject("killswitch")),
-            ooklaConfigUrl = o.optString("ooklaConfigUrl").ifBlank { defaults.ooklaConfigUrl }
+            ooklaConfigUrl = o.optString("ooklaConfigUrl").ifBlank { defaults.ooklaConfigUrl },
+            dnsPolicy = parseDnsPolicySafe(o.opt("dnsPolicy"))
         )
+    }
+
+    /**
+     * Per-field tolerance: missing → null, non-object → null,
+     * preferredServers not an array → null, any non-string entry → null,
+     * empty array → null. A bad `dnsPolicy` MUST NOT poison the rest of
+     * the config; "no policy" is always safe (the cert just doesn't
+     * emit a `dnsAssessment`).
+     */
+    private fun parseDnsPolicySafe(raw: Any?): DnsPolicyConfig? {
+        if (raw == null || raw === JSONObject.NULL) return null
+        val o = raw as? JSONObject ?: run {
+            Log.w(TAG, "dnsPolicy is not an object; ignoring")
+            return null
+        }
+        val arr = o.optJSONArray("preferredServers") ?: run {
+            Log.w(TAG, "dnsPolicy.preferredServers missing or not an array; ignoring")
+            return null
+        }
+        val servers = (0 until arr.length()).map { i ->
+            val v = arr.opt(i)
+            if (v !is String) {
+                Log.w(TAG, "dnsPolicy.preferredServers[$i]=$v not a string; ignoring policy")
+                return null
+            }
+            v
+        }
+        if (servers.isEmpty()) {
+            Log.w(TAG, "dnsPolicy.preferredServers is empty; treating as no-policy")
+            return null
+        }
+        return try {
+            DnsPolicyConfig(preferredServers = servers)
+        } catch (t: Throwable) {
+            Log.w(TAG, "dnsPolicy construction failed (${t.message}); ignoring")
+            null
+        }
     }
 
     /**

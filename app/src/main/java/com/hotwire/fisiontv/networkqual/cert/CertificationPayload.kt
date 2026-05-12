@@ -37,7 +37,20 @@ object CertificationPayload {
 
             put("result", resultJson(result))
             put("metrics", metricsJson(result))
+
+            // dnsAssessment (contract v2.3.0): top-level sibling of
+            // result/metrics, omitted entirely when null. Pre-v2.3.0
+            // payloads simply don't have the key; the backend distinguishes
+            // "missing key" from "all preferred" by checking presence
+            // rather than reading a boolean default.
+            result.dnsAssessment?.let { put("dnsAssessment", dnsAssessmentJson(it)) }
         }
+    }
+
+    private fun dnsAssessmentJson(a: com.hotwire.fisiontv.networkqual.cert.DnsAssessment): JSONObject = JSONObject().apply {
+        put("configuredPreferred", JSONArray(a.configuredPreferred))
+        put("nonPreferred", JSONArray(a.nonPreferred))
+        put("allPreferred", a.allPreferred)
     }
 
     fun logJson(result: CertificationResult) {

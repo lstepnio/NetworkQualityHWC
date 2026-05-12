@@ -301,11 +301,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 is EngineEvent.StepProgress ->
                     _state.value = UiState.Running(event.step, event.stepFrac, event.overallFrac)
                 is EngineEvent.Complete -> {
-                    _state.value = UiState.Done(event.result)
-                    withContext(Dispatchers.IO) {
-                        historyDao.insert(event.result.toEntity())
+                    // Persist BEFORE flipping UI to Done. If the local
+                    // insert fails (disk full, DB corrupt, schema drift
+                    // post-migration) we'd otherwise show a tech
+                    // "passed" on a result that was just lost from both
+                    // history AND the publish queue. Fail loud instead.
+                    try {
+                        withContext(Dispatchers.IO) {
+                            historyDao.insert(event.result.toEntity())
+                        }
+                    } catch (t: Throwable) {
+                        Log.e(
+                            TAG,
+                            "history insert failed for ${event.result.certificationId}: ${t::class.simpleName}: ${t.message}",
+                            t
+                        )
+                        // No TestStep enum value cleanly maps to "post-engine
+                        // persistence failed"; tag as PLAYBACK (the last phase)
+                        // so the Failed screen at least anchors to "the cert
+                        // finished but storage broke" mentally.
+                        _state.value = UiState.Failed(
+                            TestStep.PLAYBACK,
+                            "Could not record result locally: ${t::class.simpleName}: ${t.message ?: "unknown error"}"
+                        )
+                        return@collect
                     }
-                    enqueueAndDrain(event.result, config)
+                    // Enqueue failure is non-fatal — the result is already
+                    // in HistoryDao, so on the next launch PublishQueue
+                    // won't see it but the local row is preserved. Log
+                    // loudly so the gap is visible.
+                    try {
+                        enqueueAndDrain(event.result, config)
+                    } catch (t: Throwable) {
+                        Log.e(
+                            TAG,
+                            "enqueue failed for ${event.result.certificationId}: ${t::class.simpleName}: ${t.message}",
+                            t
+                        )
+                    }
+                    _state.value = UiState.Done(event.result)
                 }
                 is EngineEvent.Failed ->
                     _state.value = UiState.Failed(event.step, event.cause)

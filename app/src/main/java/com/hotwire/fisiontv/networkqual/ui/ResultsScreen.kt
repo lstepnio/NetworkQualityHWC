@@ -1,23 +1,19 @@
 package com.hotwire.fisiontv.networkqual.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,22 +22,59 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.hotwire.fisiontv.networkqual.cert.CertificationResult
+import com.hotwire.fisiontv.networkqual.cert.DnsAssessment
 import com.hotwire.fisiontv.networkqual.cert.HealthAssessment
 import com.hotwire.fisiontv.networkqual.cert.HealthRating
 import com.hotwire.fisiontv.networkqual.cert.Tier
 import com.hotwire.fisiontv.networkqual.cert.WifiLinkQuality
-import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthExcellent
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthFailed
-import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthGood
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthMarginal
-import com.hotwire.fisiontv.networkqual.ui.theme.FisionHealthStrong
 import com.hotwire.fisiontv.networkqual.ui.theme.FisionSuccessGreen
 
+/**
+ * Cert results screen — calmer redesign.
+ *
+ *   ┌────────────────────────────────────────────────┐
+ *   │                                                │
+ *   │       Network certified for                    │  ← eyebrow
+ *   │       4K HDR                                   │  ← green displayLarge (kept)
+ *   │       Top tier · 32% headroom                  │  ← one subtitle, no bar, no pill
+ *   │                                                │
+ *   │       ─────────────────────────────            │
+ *   │                                                │
+ *   │       112.5 Mbps    217.1 Mbps    46 ms        │  ← values, large
+ *   │       Download      Upload        Latency      │  ← labels, muted
+ *   │                                                │
+ *   │       ─────────────────────────────            │
+ *   │                                                │
+ *   │       • Wi-Fi: <advice>                        │  ← inline advisories,
+ *   │       • Update router DNS to 9.9.9.9 / 1.1.1.1 │    only when actionable
+ *   │                                                │
+ *   │       [ Run again ]                            │  ← brand pink, kept
+ *   │                                                │
+ *   └────────────────────────────────────────────────┘
+ *
+ * Design principles in this iteration:
+ * - Single centered column — the prior two-column / scrolling-right
+ *   pattern was forcing horizontal pressure that didn't pay off.
+ * - Health "pill + bar + subline" collapsed to one subtitle. The hero
+ *   already says "you're at top tier" via the giant green headline; the
+ *   bar was reading like an alarm-style progress indicator.
+ * - Wi-Fi card, DNS card, "Tested against" subtitle, peak / jitter /
+ *   rebuffer / playback-height / DNS-median secondary stats all removed
+ *   from the on-TV view. The full payload still lands in postgres; the
+ *   dashboard's `/certs/{id}` page has the complete record for operators.
+ * - Advisories surface as one-line bullets, muted-color text, no icons,
+ *   no chips. When nothing is wrong, the whole advisory block disappears.
+ * - Debug version / configVersion footer removed — useful for support
+ *   calls but visually noisy on the tech-on-site flow.
+ */
 @Composable
 fun ResultsScreen(
     result: CertificationResult,
@@ -50,41 +83,31 @@ fun ResultsScreen(
     val focusRequester = remember { FocusRequester() }
     LaunchedEffect(Unit) { focusRequester.requestFocus() }
 
-    Row(modifier = Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 32.dp)) {
+    Box(modifier = Modifier.fillMaxSize().padding(48.dp)) {
         Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight(),
+                .fillMaxSize()
+                .widthIn(max = 720.dp)
+                .align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-            Text(
-                "Network certified for",
-                style = MaterialTheme.typography.titleLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(Modifier.height(8.dp))
-            // Successful certifications read in green — the brand pink
-            // looked alarming in this position, easy to misread as an
-            // error state. Only Tier.NONE keeps the error treatment.
-            Text(
-                text = result.achievedTier.displayName,
-                style = MaterialTheme.typography.displayMedium,
-                color = if (result.achievedTier == Tier.NONE) MaterialTheme.colorScheme.error
-                    else FisionSuccessGreen
-            )
-            Spacer(Modifier.height(4.dp))
-            Text(
-                text = "Tested against ${result.selectedServer.name}",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            // HSN intentionally not shown on screen. It IS sent raw in
-            // the POST body (see CertificationPayload.identity.hsn) so
-            // the backend dashboard / billing-account linkage works
-            // end-to-end without exposing it to anyone reading the TV.
-            Spacer(Modifier.height(20.dp))
-            MetricsTable(result)
+            Hero(result.achievedTier, result.health)
             Spacer(Modifier.height(28.dp))
+            ThinDivider()
+            Spacer(Modifier.height(28.dp))
+            MetricsRow(result)
+            val advisories = buildAdvisories(result.wifiLink, result.dnsAssessment)
+            if (advisories.isNotEmpty()) {
+                Spacer(Modifier.height(28.dp))
+                ThinDivider()
+                Spacer(Modifier.height(20.dp))
+                advisories.forEach { adv ->
+                    Advisory(adv)
+                    Spacer(Modifier.height(6.dp))
+                }
+            }
+            Spacer(Modifier.height(36.dp))
             Button(
                 onClick = onRunAgain,
                 modifier = Modifier
@@ -99,213 +122,152 @@ fun ResultsScreen(
                 Text("Run again", style = MaterialTheme.typography.titleLarge)
             }
         }
-        Spacer(Modifier.width(48.dp))
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxHeight()
-                .verticalScroll(rememberScrollState())
-        ) {
-            result.wifiLink?.let {
-                WifiLinkCard(it)
-                Spacer(Modifier.height(10.dp))
-            }
-            HealthBadge(result.health)
-            // Configuration miss (non-preferred DNS) is surfaced below the
-            // health badge so the tech sees the verdict first, then the
-            // actionable detail. Hidden in the success (`allPreferred`) and
-            // no-policy (`null`) cases — see DnsResultCard's KDoc.
-            result.dnsAssessment?.takeIf { !it.allPreferred }?.let {
-                Spacer(Modifier.height(10.dp))
-                DnsResultCard(
-                    nonPreferred = it.nonPreferred,
-                    configuredPreferred = it.configuredPreferred
-                )
-            }
-        }
     }
 }
 
 @Composable
-private fun HealthBadge(health: HealthAssessment) {
-    // Top-tier achievement is a separate visual case: the customer certified
-    // at the top of the ladder, so the pill should say "Top tier" in green
-    // regardless of how tight the within-tier margin is. The headroom % and
-    // limiting metric still appear in the subline so the customer (and a
-    // tech) can see whether the connection is comfortably or just barely
-    // 4K HDR.
-    val isTopTier = health.nextTier == null && health.rating != HealthRating.FAILED
+private fun Hero(achieved: Tier, health: HealthAssessment) {
+    Text(
+        "Network certified for",
+        style = MaterialTheme.typography.titleLarge,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+    Spacer(Modifier.height(4.dp))
+    Text(
+        text = achieved.displayName,
+        style = MaterialTheme.typography.displayLarge,
+        color = if (achieved == Tier.NONE) FisionHealthFailed else FisionSuccessGreen,
+        textAlign = TextAlign.Center
+    )
+    Spacer(Modifier.height(10.dp))
+    Text(
+        heroSubtitle(health),
+        style = MaterialTheme.typography.titleMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center
+    )
+}
 
-    val color = when {
-        isTopTier -> FisionHealthExcellent
-        health.rating == HealthRating.EXCELLENT -> FisionHealthExcellent
-        health.rating == HealthRating.STRONG -> FisionHealthStrong
-        health.rating == HealthRating.GOOD -> FisionHealthGood
-        health.rating == HealthRating.MARGINAL -> FisionHealthMarginal
-        else -> FisionHealthFailed
+/**
+ * Single-line subtitle replacing the prior pill+bar+subline trio. Reads
+ * the verdict, the headroom number, and the limiting metric when it's
+ * informative.
+ */
+private fun heroSubtitle(health: HealthAssessment): String {
+    if (health.rating == HealthRating.FAILED) {
+        return "Connection didn't reach the SD floor."
     }
-    val pillText = if (isTopTier) "Top tier" else health.rating.displayName
-
-    val subline = when {
-        health.rating == HealthRating.FAILED -> "Connection didn't reach the SD floor."
-        isTopTier -> {
-            val limited = health.limitingMetric ?: "—"
-            "${health.headroomPct}% margin within top tier · closest to floor: $limited"
-        }
-        else -> "${health.headroomPct}% of the way to ${health.nextTier!!.displayName} · limited by ${health.limitingMetric ?: "—"}"
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = color,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        pillText,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.White
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Headroom ${health.headroomPct}%",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            Spacer(Modifier.height(8.dp))
-            HeadroomBar(health.headroomPct, color)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                subline,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
+    val isTopTier = health.nextTier == null
+    val tierLabel = if (isTopTier) "Top tier" else health.rating.displayName
+    return "$tierLabel · ${health.headroomPct}% headroom"
 }
 
 @Composable
-private fun HeadroomBar(pct: Int, color: Color) {
-    val frac = (pct.coerceIn(0, 100)) / 100f
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(8.dp)
-            .background(MaterialTheme.colorScheme.surface, RoundedCornerShape(4.dp))
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth(frac)
-                .height(8.dp)
-                .background(color, RoundedCornerShape(4.dp))
-        )
-    }
-}
-
-@Composable
-private fun WifiLinkCard(link: WifiLinkQuality) {
-    val color = when (link.rating) {
-        HealthRating.EXCELLENT -> FisionHealthExcellent
-        HealthRating.STRONG -> FisionHealthStrong
-        HealthRating.GOOD -> FisionHealthGood
-        HealthRating.MARGINAL -> FisionHealthMarginal
-        HealthRating.FAILED -> FisionHealthFailed
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surfaceVariant,
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Surface(
-                    color = color,
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        link.rating.displayName,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = Color.White
-                    )
-                }
-                Spacer(Modifier.width(10.dp))
-                Text(
-                    "Wi-Fi link",
-                    style = MaterialTheme.typography.titleMedium
-                )
-            }
-            Spacer(Modifier.height(6.dp))
-            Text(
-                link.advice,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-    }
-}
-
-@Composable
-private fun MetricsTable(r: CertificationResult) {
-    Column {
-        MetricRow(
-            "Download",
-            "${"%.1f".format(r.download.steadyMbps)} Mbps",
-            "peak ${"%.1f".format(r.download.peakMbps)} Mbps"
-        )
-        MetricRow(
-            "Upload",
-            "${"%.1f".format(r.upload.steadyMbps)} Mbps",
-            "peak ${"%.1f".format(r.upload.peakMbps)} Mbps"
-        )
-        MetricRow(
-            "Latency",
-            "${r.latency.medianMs} ms",
-            "jitter ± ${r.latency.jitterMs} ms"
-        )
-        MetricRow(
-            "Playback",
-            if (r.playback.peakHeight > 0) "${r.playback.peakHeight}p" else "no video",
-            "${r.playback.rebufferCount} rebuffers · ${r.playback.peakBitrateKbps} kbps peak"
-        )
-        MetricRow(
-            "DNS",
-            "${r.dns.medianMs} ms",
-            if (r.dns.failureCount > 0) "${r.dns.failureCount} of ${r.dns.samples.size} failed" else "max ${r.dns.maxMs} ms"
-        )
-    }
-}
-
-@Composable
-private fun MetricRow(label: String, value: String, secondary: String) {
+private fun MetricsRow(r: CertificationResult) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceEvenly
     ) {
+        Metric(
+            value = "%.1f".format(r.download.steadyMbps),
+            unit = "Mbps",
+            label = "Download"
+        )
+        Metric(
+            value = "%.1f".format(r.upload.steadyMbps),
+            unit = "Mbps",
+            label = "Upload"
+        )
+        Metric(
+            value = "${r.latency.medianMs}",
+            unit = "ms",
+            label = "Latency"
+        )
+    }
+}
+
+@Composable
+private fun Metric(value: String, unit: String, label: String) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(
+                value,
+                fontSize = 36.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Spacer(Modifier.widthIn(min = 4.dp))
+            Text(
+                unit,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(bottom = 6.dp, start = 4.dp)
+            )
+        }
+        Spacer(Modifier.height(2.dp))
         Text(
             label,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        Text(
-            value,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleMedium
-        )
-        Spacer(Modifier.width(32.dp))
-        Text(
-            secondary,
-            modifier = Modifier.weight(1.4f),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
     }
 }
 
+private data class AdvisoryItem(val text: String, val tone: Color)
+
+private fun buildAdvisories(
+    wifi: WifiLinkQuality?,
+    dns: DnsAssessment?
+): List<AdvisoryItem> {
+    val out = mutableListOf<AdvisoryItem>()
+    if (wifi != null) {
+        val tone = when (wifi.rating) {
+            HealthRating.FAILED -> FisionHealthFailed
+            HealthRating.MARGINAL -> FisionHealthMarginal
+            else -> null
+        }
+        if (tone != null) {
+            out += AdvisoryItem(
+                text = "Wi-Fi: ${wifi.advice}",
+                tone = tone
+            )
+        }
+    }
+    if (dns != null && !dns.allPreferred && dns.configuredPreferred.isNotEmpty()) {
+        val first = dns.configuredPreferred.first()
+        val rest = dns.configuredPreferred.drop(1)
+        val advice = when {
+            rest.isEmpty() -> "Update router DNS to $first"
+            rest.size == 1 -> "Update router DNS to $first / ${rest[0]}"
+            else -> "Update router DNS to $first (+ ${rest.size} more)"
+        }
+        out += AdvisoryItem(text = advice, tone = FisionHealthMarginal)
+    }
+    return out
+}
+
+@Composable
+private fun Advisory(item: AdvisoryItem) {
+    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+        Text(
+            "• ",
+            color = item.tone,
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Text(
+            item.text,
+            color = item.tone,
+            style = MaterialTheme.typography.bodyLarge,
+            lineHeight = 24.sp
+        )
+    }
+}
+
+@Composable
+private fun ThinDivider() {
+    Box(
+        modifier = Modifier
+            .widthIn(min = 320.dp)
+            .height(1.dp)
+            .background(Color.White.copy(alpha = 0.10f))
+    )
+}
